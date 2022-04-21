@@ -8,13 +8,21 @@ import torch.nn.functional as F
 
 from garage import log_performance, TrajectoryBatch
 from garage.misc import tensor_utils
-from garage.torch.algos import (_Default, compute_advantages, filter_valids,
-                                make_optimizer, pad_to_last)
+from garage.torch.algos import (
+    _Default,
+    compute_advantages,
+    filter_valids,
+    make_optimizer,
+    pad_to_last,
+)
 from garage.torch.utils import flatten_batch
 from garage.np.baselines import LinearFeatureBaseline
 
 from dicg.np.algos import MABatchPolopt
 from dicg.torch.algos.utils import pad_one_to_last
+
+import wandb
+
 
 class CentralizedMAPPO(MABatchPolopt):
     """Centralized Multi-agent Vanilla Policy Gradient (REINFORCE).
@@ -56,27 +64,27 @@ class CentralizedMAPPO(MABatchPolopt):
     """
 
     def __init__(
-            self,
-            env_spec,
-            policy,
-            baseline,
-            optimizer=torch.optim.Adam,
-            baseline_optimizer=torch.optim.Adam,
-            optimization_n_minibatches=1,
-            optimization_mini_epochs=1,
-            policy_lr=_Default(3e-4),
-            lr_clip_range=2e-1,
-            max_path_length=500,
-            num_train_per_epoch=1,
-            discount=0.99,
-            gae_lambda=1,
-            center_adv=True,
-            positive_adv=False,
-            policy_ent_coeff=0.0,
-            use_softplus_entropy=False,
-            stop_entropy_gradient=False,
-            entropy_method='no_entropy',
-            clip_grad_norm=None,
+        self,
+        env_spec,
+        policy,
+        baseline,
+        optimizer=torch.optim.Adam,
+        baseline_optimizer=torch.optim.Adam,
+        optimization_n_minibatches=1,
+        optimization_mini_epochs=1,
+        policy_lr=_Default(3e-4),
+        lr_clip_range=2e-1,
+        max_path_length=500,
+        num_train_per_epoch=1,
+        discount=0.99,
+        gae_lambda=1,
+        center_adv=True,
+        positive_adv=False,
+        policy_ent_coeff=0.0,
+        use_softplus_entropy=False,
+        stop_entropy_gradient=False,
+        entropy_method="no_entropy",
+        clip_grad_norm=None,
     ):
         self._gae_lambda = gae_lambda
         self._center_adv = center_adv
@@ -88,55 +96,59 @@ class CentralizedMAPPO(MABatchPolopt):
         self._lr_clip_range = lr_clip_range
         self._eps = 1e-8
 
-        self._maximum_entropy = (entropy_method == 'max')
-        self._entropy_regularzied = (entropy_method == 'regularized')
-        self._check_entropy_configuration(entropy_method, center_adv,
-                                          stop_entropy_gradient,
-                                          policy_ent_coeff)
+        self._maximum_entropy = entropy_method == "max"
+        self._entropy_regularzied = entropy_method == "regularized"
+        self._check_entropy_configuration(
+            entropy_method, center_adv, stop_entropy_gradient, policy_ent_coeff
+        )
         self._episode_reward_mean = collections.deque(maxlen=100)
 
-        self._optimizer = make_optimizer(optimizer,
-                                         policy,
-                                         lr=policy_lr,
-                                         eps=_Default(1e-5))
+        self._optimizer = make_optimizer(
+            optimizer, policy, lr=policy_lr, eps=_Default(1e-5)
+        )
 
         if not isinstance(baseline, LinearFeatureBaseline):
-            self._baseline_optimizer = make_optimizer(baseline_optimizer,
-                                                      baseline,
-                                                      lr=policy_lr,
-                                                      eps=_Default(1e-5))
+            self._baseline_optimizer = make_optimizer(
+                baseline_optimizer, baseline, lr=policy_lr, eps=_Default(1e-5)
+            )
 
         self._optimization_n_minibatches = optimization_n_minibatches
         self._optimization_mini_epochs = optimization_mini_epochs
 
         self._clip_grad_norm = clip_grad_norm
 
-        super().__init__(env_spec=env_spec,
-                         policy=policy,
-                         baseline=baseline,
-                         discount=discount,
-                         max_path_length=max_path_length,
-                         n_samples=num_train_per_epoch)
+        super().__init__(
+            env_spec=env_spec,
+            policy=policy,
+            baseline=baseline,
+            discount=discount,
+            max_path_length=max_path_length,
+            n_samples=num_train_per_epoch,
+        )
 
         self._old_policy = copy.deepcopy(self.policy)
 
     @staticmethod
-    def _check_entropy_configuration(entropy_method, center_adv,
-                                     stop_entropy_gradient, policy_ent_coeff):
-        if entropy_method not in ('max', 'regularized', 'no_entropy'):
-            raise ValueError('Invalid entropy_method')
+    def _check_entropy_configuration(
+        entropy_method, center_adv, stop_entropy_gradient, policy_ent_coeff
+    ):
+        if entropy_method not in ("max", "regularized", "no_entropy"):
+            raise ValueError("Invalid entropy_method")
 
-        if entropy_method == 'max':
+        if entropy_method == "max":
             if center_adv:
-                raise ValueError('center_adv should be False when '
-                                 'entropy_method is max')
+                raise ValueError(
+                    "center_adv should be False when " "entropy_method is max"
+                )
             if not stop_entropy_gradient:
-                raise ValueError('stop_gradient should be True when '
-                                 'entropy_method is max')
-        if entropy_method == 'no_entropy':
+                raise ValueError(
+                    "stop_gradient should be True when " "entropy_method is max"
+                )
+        if entropy_method == "no_entropy":
             if policy_ent_coeff != 0.0:
-                raise ValueError('policy_ent_coeff should be zero '
-                                 'when there is no entropy method')
+                raise ValueError(
+                    "policy_ent_coeff should be zero " "when there is no entropy method"
+                )
 
     def train_once(self, itr, paths):
         """Train the algorithm once.
@@ -150,17 +162,25 @@ class CentralizedMAPPO(MABatchPolopt):
                 * average_return: (float)
 
         """
-        logger.log('Processing samples...')
-        obs, avail_actions, actions, rewards, valids, baselines, returns = \
-            self.process_samples(itr, paths)
+        logger.log("Processing samples...")
+        (
+            obs,
+            avail_actions,
+            actions,
+            rewards,
+            valids,
+            baselines,
+            returns,
+        ) = self.process_samples(itr, paths)
 
         # print('processed obs.shape =', obs.shape)
         # print('processed avail_actions.shape=', avail_actions.shape)
         # print(avail_actions)
 
         with torch.no_grad():
-            loss_before = self._compute_loss(itr, obs, avail_actions, actions, 
-                                             rewards, valids, baselines)
+            loss_before = self._compute_loss(
+                itr, obs, avail_actions, actions, rewards, valids, baselines
+            )
             kl_before = self._compute_kl_constraint(obs, avail_actions, actions)
 
         self._old_policy.load_state_dict(self.policy.state_dict())
@@ -174,47 +194,68 @@ class CentralizedMAPPO(MABatchPolopt):
 
         shuffled_ids = np.random.permutation(len(rewards))
         # shuffled_ids = np.array(range(len(rewards)))
-        print('MultiAgentNumTrajs =', len(rewards))
+        print("MultiAgentNumTrajs =", len(rewards))
 
         for mini_epoch in range(self._optimization_mini_epochs):
             for start in range(0, len(rewards), step_size):
                 ids = shuffled_ids[start : min(start + step_size, len(rewards))]
-                print('Mini epoch: {} | Optimizing policy using traj {} to traj {}'.
-                    format(mini_epoch, start, min(start + step_size, len(rewards)))
+                print(
+                    "Mini epoch: {} | Optimizing policy using traj {} to traj {}".format(
+                        mini_epoch, start, min(start + step_size, len(rewards))
+                    )
                 )
-                loss = self._compute_loss(itr, obs[ids], avail_actions[ids], 
-                                          actions[ids], rewards[ids], 
-                                          valids[ids], baselines[ids])
+                loss = self._compute_loss(
+                    itr,
+                    obs[ids],
+                    avail_actions[ids],
+                    actions[ids],
+                    rewards[ids],
+                    valids[ids],
+                    baselines[ids],
+                )
                 if not isinstance(self.baseline, LinearFeatureBaseline):
                     baseline_loss = self.baseline.compute_loss(obs[ids], returns[ids])
                     self._baseline_optimizer.zero_grad()
                     baseline_loss.backward()
                 self._optimizer.zero_grad()
                 loss.backward()
-    
+
                 if self._clip_grad_norm is not None:
-                    torch.nn.utils.clip_grad_norm_(self.policy.parameters(), 
-                                                    self._clip_grad_norm)
+                    torch.nn.utils.clip_grad_norm_(
+                        self.policy.parameters(), self._clip_grad_norm
+                    )
                 grad_norm.append(self.policy.grad_norm())
-                
-                self._optimize(itr, obs[ids], avail_actions[ids], actions[ids], 
-                               rewards[ids], valids[ids], baselines[ids], returns[ids])
-            logger.log('Mini epoch: {} | Loss: {}'.format(mini_epoch, loss))
+
+                self._optimize(
+                    itr,
+                    obs[ids],
+                    avail_actions[ids],
+                    actions[ids],
+                    rewards[ids],
+                    valids[ids],
+                    baselines[ids],
+                    returns[ids],
+                )
+            logger.log("Mini epoch: {} | Loss: {}".format(mini_epoch, loss))
             if not isinstance(self.baseline, LinearFeatureBaseline):
-                logger.log('Mini epoch: {} | BaselineLoss: {}'.format(mini_epoch, 
-                                                                      baseline_loss))
+                logger.log(
+                    "Mini epoch: {} | BaselineLoss: {}".format(
+                        mini_epoch, baseline_loss
+                    )
+                )
 
         grad_norm = np.mean(grad_norm)
         # End train
 
         with torch.no_grad():
-            loss_after = self._compute_loss(itr, obs, avail_actions, actions, 
-                                            rewards, valids, baselines)
+            loss_after = self._compute_loss(
+                itr, obs, avail_actions, actions, rewards, valids, baselines
+            )
             kl = self._compute_kl_constraint(obs, avail_actions, actions)
             policy_entropy = self._compute_policy_entropy(obs, avail_actions, actions)
 
         if isinstance(self.baseline, LinearFeatureBaseline):
-            logger.log('Fitting baseline...')
+            logger.log("Fitting baseline...")
             self.baseline.fit(paths)
 
         # logging ##############################################################
@@ -223,32 +264,52 @@ class CentralizedMAPPO(MABatchPolopt):
         returns = []
         undiscounted_returns = []
         for i_path in range(len(paths)):
-            path_rewards = np.asarray(paths[i_path]['rewards'])
-            returns.append(paths[i_path]['returns'])
+            path_rewards = np.asarray(paths[i_path]["rewards"])
+            returns.append(paths[i_path]["returns"])
             undiscounted_returns.append(np.sum(path_rewards))
 
         average_returns = undiscounted_returns
         average_discounted_return = np.mean([r[0] for r in returns])
-    
-        tabular.record('Iteration', itr)
-        tabular.record('NumTrajs', len(paths) * self.policy._n_agents)
-        tabular.record('AverageDiscountedReturn', average_discounted_return)
-        tabular.record('AverageReturn', np.mean(undiscounted_returns))
-        tabular.record('StdReturn', np.std(undiscounted_returns))
-        tabular.record('MaxReturn', np.max(undiscounted_returns))
-        tabular.record('MinReturn', np.min(undiscounted_returns))
-        tabular.record('LossBefore', loss.item())
-        tabular.record('LossAfter', loss_after.item())
-        tabular.record('dLoss', loss.item() - loss_after.item())
-        tabular.record('KLBefore', kl_before.item())
-        tabular.record('KL', kl.item())
-        tabular.record('Entropy', policy_entropy.mean().item())
-        tabular.record('GradNorm', grad_norm)
-        
+
+        tabular.record("Iteration", itr)
+        tabular.record("NumTrajs", len(paths) * self.policy._n_agents)
+        tabular.record("AverageDiscountedReturn", average_discounted_return)
+        tabular.record("AverageReturn", np.mean(undiscounted_returns))
+        tabular.record("StdReturn", np.std(undiscounted_returns))
+        tabular.record("MaxReturn", np.max(undiscounted_returns))
+        tabular.record("MinReturn", np.min(undiscounted_returns))
+        tabular.record("LossBefore", loss.item())
+        tabular.record("LossAfter", loss_after.item())
+        tabular.record("dLoss", loss.item() - loss_after.item())
+        tabular.record("KLBefore", kl_before.item())
+        tabular.record("KL", kl.item())
+        tabular.record("Entropy", policy_entropy.mean().item())
+        tabular.record("GradNorm", grad_norm)
+
+        wandb.log(
+            {
+                "Iteration": itr,
+                "NumTrajs": len(paths) * self.policy._n_agents,
+                "AverageDiscountedReturn": average_discounted_return,
+                "AverageReturn": np.mean(undiscounted_returns),
+                "StdReturn": np.std(undiscounted_returns),
+                "MaxReturn": np.max(undiscounted_returns),
+                "MinReturn": np.min(undiscounted_returns),
+                "LossBefore": loss.item(),
+                "LossAfter": loss_after.item(),
+                "dLoss": loss.item() - loss_after.item(),
+                "KLBefore": kl_before.item(),
+                "KL": kl.item(),
+                "Entropy": policy_entropy.mean().item(),
+                "GradNorm": grad_norm,
+            }
+        )
+
         return np.mean(average_returns)
 
-    def _compute_loss(self, itr, obs, avail_actions, actions, rewards, valids, 
-                      baselines):
+    def _compute_loss(
+        self, itr, obs, avail_actions, actions, rewards, valids, baselines
+    ):
         """Compute mean value of loss.
 
         Args:
@@ -273,24 +334,32 @@ class CentralizedMAPPO(MABatchPolopt):
         if self._maximum_entropy:
             rewards += self._policy_ent_coeff * policy_entropies
 
-        advantages = compute_advantages(self.discount, self._gae_lambda,
-                                        self.max_path_length, baselines,
-                                        rewards)
+        advantages = compute_advantages(
+            self.discount, self._gae_lambda, self.max_path_length, baselines, rewards
+        )
 
         if self._center_adv:
             means, variances = list(
-                zip(*[(valid_adv.mean(), valid_adv.var(unbiased=False))
-                      for valid_adv in filter_valids(advantages, valids)]))
-            advantages = F.batch_norm(advantages.t(),
-                                      torch.Tensor(means),
-                                      torch.Tensor(variances),
-                                      eps=self._eps).t()
+                zip(
+                    *[
+                        (valid_adv.mean(), valid_adv.var(unbiased=False))
+                        for valid_adv in filter_valids(advantages, valids)
+                    ]
+                )
+            )
+            advantages = F.batch_norm(
+                advantages.t(),
+                torch.Tensor(means),
+                torch.Tensor(variances),
+                eps=self._eps,
+            ).t()
 
         if self._positive_adv:
             advantages -= advantages.min()
 
-        objective = self._compute_objective(advantages, valids, obs, 
-                                            avail_actions, actions, rewards)
+        objective = self._compute_objective(
+            advantages, valids, obs, avail_actions, actions, rewards
+        )
 
         if self._entropy_regularzied:
             objective += self._policy_ent_coeff * policy_entropies
@@ -313,37 +382,32 @@ class CentralizedMAPPO(MABatchPolopt):
         """
         if self.policy.recurrent:
             with torch.no_grad():
-                if hasattr(self.policy, 'dicg'):
-                    old_dist, _ = self._old_policy.forward(
-                        obs, avail_actions, actions)
+                if hasattr(self.policy, "dicg"):
+                    old_dist, _ = self._old_policy.forward(obs, avail_actions, actions)
                 else:
-                    old_dist = self._old_policy.forward(
-                        obs, avail_actions, actions)
-    
-            if hasattr(self.policy, 'dicg'):
+                    old_dist = self._old_policy.forward(obs, avail_actions, actions)
+
+            if hasattr(self.policy, "dicg"):
                 new_dist, _ = self.policy.forward(obs, avail_actions, actions)
             else:
                 new_dist = self.policy.forward(obs, avail_actions, actions)
-        
+
         else:
             flat_obs = flatten_batch(obs)
             flat_avail_actions = flatten_batch(avail_actions)
             with torch.no_grad():
-                if hasattr(self.policy, 'dicg'):
-                    old_dist, _ = self._old_policy.forward(
-                        flat_obs, flat_avail_actions)
+                if hasattr(self.policy, "dicg"):
+                    old_dist, _ = self._old_policy.forward(flat_obs, flat_avail_actions)
                 else:
-                    old_dist = self._old_policy.forward(
-                        flat_obs, flat_avail_actions)
-    
-            if hasattr(self.policy, 'dicg'):
+                    old_dist = self._old_policy.forward(flat_obs, flat_avail_actions)
+
+            if hasattr(self.policy, "dicg"):
                 new_dist, _ = self.policy.forward(flat_obs, flat_avail_actions)
             else:
                 new_dist = self.policy.forward(flat_obs, flat_avail_actions)
-    
-        kl_constraint = torch.distributions.kl.kl_divergence(
-            old_dist, new_dist)
-    
+
+        kl_constraint = torch.distributions.kl.kl_divergence(old_dist, new_dist)
+
         return kl_constraint.mean()
 
     def _compute_policy_entropy(self, obs, avail_actions, actions=None):
@@ -374,8 +438,9 @@ class CentralizedMAPPO(MABatchPolopt):
 
         return policy_entropy
 
-    def _compute_objective(self, advantages, valids, obs, avail_actions, 
-                           actions, rewards):
+    def _compute_objective(
+        self, advantages, valids, obs, avail_actions, actions, rewards
+    ):
         """Compute objective value.
 
         Args:
@@ -400,9 +465,9 @@ class CentralizedMAPPO(MABatchPolopt):
         surrogate = likelihood_ratio * advantages
 
         # Clipping the constraint
-        likelihood_ratio_clip = torch.clamp(likelihood_ratio,
-                                            min=1 - self._lr_clip_range,
-                                            max=1 + self._lr_clip_range)
+        likelihood_ratio_clip = torch.clamp(
+            likelihood_ratio, min=1 - self._lr_clip_range, max=1 + self._lr_clip_range
+        )
 
         # Calculate surrotate clip
         surrogate_clip = likelihood_ratio_clip * advantages
@@ -420,11 +485,13 @@ class CentralizedMAPPO(MABatchPolopt):
                 where T is the path length experienced by the agent.
 
         """
-        if hasattr(self.baseline, 'predict_n'):
+        if hasattr(self.baseline, "predict_n"):
             return torch.Tensor(self.baseline.predict_n(path))
         return torch.Tensor(self.baseline.predict(path))
 
-    def _optimize(self, itr, obs, avail_actions, actions, rewards, valids, baselines, returns):
+    def _optimize(
+        self, itr, obs, avail_actions, actions, rewards, valids, baselines, returns
+    ):
         del itr, valids, obs, avail_actions, actions, rewards, baselines, returns
         self._optimizer.step()
         if not isinstance(self.baseline, LinearFeatureBaseline):
@@ -448,41 +515,59 @@ class CentralizedMAPPO(MABatchPolopt):
 
         """
         for path in paths:
-            if 'returns' not in path:
-                path['returns'] = tensor_utils.discount_cumsum(
-                    path['rewards'], self.discount)
+            if "returns" not in path:
+                path["returns"] = tensor_utils.discount_cumsum(
+                    path["rewards"], self.discount
+                )
 
-        returns = torch.stack([
-            pad_to_last(tensor_utils.discount_cumsum(path['rewards'],
-                                           self.discount).copy(),
-                        total_length=self.max_path_length) for path in paths
-        ])
-        valids = torch.Tensor([len(path['actions']) for path in paths]).int()
-        obs = torch.stack([
-            pad_to_last(path['observations'],
-                        total_length=self.max_path_length,
-                        axis=0) for path in paths
-        ])
-        avail_actions = torch.stack([
-            pad_one_to_last(path['avail_actions'],
-                        total_length=self.max_path_length,
-                        axis=0) for path in paths
-        ]) # Cannot pad all zero since prob sum cannot be zero
-        actions = torch.stack([
-            pad_to_last(path['actions'],
-                        total_length=self.max_path_length,
-                        axis=0) for path in paths
-        ])
-        rewards = torch.stack([
-            pad_to_last(path['rewards'], total_length=self.max_path_length)
-            for path in paths
-        ])
+        returns = torch.stack(
+            [
+                pad_to_last(
+                    tensor_utils.discount_cumsum(path["rewards"], self.discount).copy(),
+                    total_length=self.max_path_length,
+                )
+                for path in paths
+            ]
+        )
+        valids = torch.Tensor([len(path["actions"]) for path in paths]).int()
+        obs = torch.stack(
+            [
+                pad_to_last(
+                    path["observations"], total_length=self.max_path_length, axis=0
+                )
+                for path in paths
+            ]
+        )
+        avail_actions = torch.stack(
+            [
+                pad_one_to_last(
+                    path["avail_actions"], total_length=self.max_path_length, axis=0
+                )
+                for path in paths
+            ]
+        )  # Cannot pad all zero since prob sum cannot be zero
+        actions = torch.stack(
+            [
+                pad_to_last(path["actions"], total_length=self.max_path_length, axis=0)
+                for path in paths
+            ]
+        )
+        rewards = torch.stack(
+            [
+                pad_to_last(path["rewards"], total_length=self.max_path_length)
+                for path in paths
+            ]
+        )
 
         if isinstance(self.baseline, LinearFeatureBaseline):
-            baselines = torch.stack([
-                pad_to_last(self._get_baselines(path),
-                            total_length=self.max_path_length) for path in paths
-            ])
+            baselines = torch.stack(
+                [
+                    pad_to_last(
+                        self._get_baselines(path), total_length=self.max_path_length
+                    )
+                    for path in paths
+                ]
+            )
         else:
             with torch.no_grad():
                 baselines = self.baseline.forward(obs)
