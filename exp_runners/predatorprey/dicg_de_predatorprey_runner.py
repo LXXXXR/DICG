@@ -27,6 +27,7 @@ from dicg.torch.baselines import DICGCritic
 from dicg.torch.policies import DecCategoricalMLPPolicy
 from dicg.experiment.local_runner_wrapper import LocalRunnerWrapper
 from dicg.sampler import CentralizedMAOnPolicyVectorizedSampler
+from dicg.utils import set_cpu_num
 
 import wandb
 
@@ -188,6 +189,8 @@ def run(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    # harware
+    parser.add_argument("--cpu_num", type=int, default=8)
     # Meta
     parser.add_argument("--mode", "-m", type=str, default="train")
     parser.add_argument("--loc", type=str, default="local")
@@ -257,6 +260,8 @@ if __name__ == "__main__":
         args.encoder_hidden_sizes = [
             128,
         ]  # Default hidden sizes
+
+    set_cpu_num(args.cpu_num)
 
     run(args)
 

@@ -1,0 +1,27 @@
+{
+    "os": "Linux-5.4.0-104-generic-x86_64-with-debian-bullseye-sid",
+    "python": "3.7.12",
+    "heartbeatAt": "2022-04-21T15:47:54.460303",
+    "startedAt": "2022-04-21T15:47:51.577639",
+    "docker": null,
+    "gpu": "NVIDIA RTX A5000",
+    "gpu_count": 8,
+    "cpu_count": 64,
+    "cuda": null,
+    "args": [
+        "--penalty",
+        "0"
+    ],
+    "state": "running",
+    "program": "dicg_de_predatorprey_runner.py",
+    "codePath": "exp_runners/predatorprey/dicg_de_predatorprey_runner.py",
+    "git": {
+        "remote": "git@github.com:LXXXXR/DICG.git",
+        "commit": "d367c6a6211ad4ad9fc5d581d36ef307b266deb2"
+    },
+    "email": "lixr423@outlook.com",
+    "root": "/home/xlihq/courses/DSAA6000B/repo/DICG",
+    "host": "eez211",
+    "username": "xlihq",
+    "executable": "/home/xlihq/anaconda3/envs/dicg/bin/python"
+}

@@ -25,6 +25,7 @@ from dicg.torch.algos import CentralizedMAPPO
 from dicg.torch.policies import DecCategoricalMLPPolicy
 from dicg.experiment.local_runner_wrapper import LocalRunnerWrapper
 from dicg.sampler import CentralizedMAOnPolicyVectorizedSampler
+from dicg.utils import set_cpu_num
 
 import wandb
 
@@ -164,6 +165,8 @@ def run(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    # harware
+    parser.add_argument("--cpu_num", type=int, default=8)
     # Meta
     parser.add_argument("--mode", "-m", type=str, default="train")
     parser.add_argument("--loc", type=str, default="local")
@@ -210,10 +213,13 @@ if __name__ == "__main__":
         default=10,
         help="The number of epochs the optimizer runs for each batch of trajectories.",
     )
+
     # Policy
     parser.add_argument("--hidden_sizes", type=list, default=[128, 64, 32])
 
     args = parser.parse_args()
+
+    set_cpu_num(args.cpu_num)
 
     run(args)
 
