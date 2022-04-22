@@ -141,3 +141,7 @@ MUJOCO_LOG.TXT
 
 # Code profling
 *.lprof
+
+
+# wandb
+wandb/
