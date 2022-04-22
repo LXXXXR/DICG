@@ -143,5 +143,6 @@ MUJOCO_LOG.TXT
 *.lprof
 
 
-# wandb
+# customized
 wandb/
+.vscode/

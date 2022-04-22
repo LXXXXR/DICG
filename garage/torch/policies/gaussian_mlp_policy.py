@@ -50,42 +50,46 @@ class GaussianMLPPolicy(Policy, GaussianMLPModule):
 
     """
 
-    def __init__(self,
-                 env_spec,
-                 hidden_sizes=(32, 32),
-                 hidden_nonlinearity=torch.tanh,
-                 hidden_w_init=nn.init.xavier_uniform_,
-                 hidden_b_init=nn.init.zeros_,
-                 output_nonlinearity=None,
-                 output_w_init=nn.init.xavier_uniform_,
-                 output_b_init=nn.init.zeros_,
-                 learn_std=True,
-                 init_std=1.0,
-                 min_std=1e-6,
-                 max_std=None,
-                 std_parameterization='exp',
-                 layer_normalization=False,
-                 name='GaussianMLPPolicy'):
+    def __init__(
+        self,
+        env_spec,
+        hidden_sizes=(32, 32),
+        hidden_nonlinearity=torch.tanh,
+        hidden_w_init=nn.init.xavier_uniform_,
+        hidden_b_init=nn.init.zeros_,
+        output_nonlinearity=None,
+        output_w_init=nn.init.xavier_uniform_,
+        output_b_init=nn.init.zeros_,
+        learn_std=True,
+        init_std=1.0,
+        min_std=1e-6,
+        max_std=None,
+        std_parameterization="exp",
+        layer_normalization=False,
+        name="GaussianMLPPolicy",
+    ):
         self._obs_dim = env_spec.observation_space.flat_dim
         self._action_dim = env_spec.action_space.flat_dim
 
         Policy.__init__(self, env_spec, name)
-        GaussianMLPModule.__init__(self,
-                                   input_dim=self._obs_dim,
-                                   output_dim=self._action_dim,
-                                   hidden_sizes=hidden_sizes,
-                                   hidden_nonlinearity=hidden_nonlinearity,
-                                   hidden_w_init=hidden_w_init,
-                                   hidden_b_init=hidden_b_init,
-                                   output_nonlinearity=output_nonlinearity,
-                                   output_w_init=output_w_init,
-                                   output_b_init=output_b_init,
-                                   learn_std=learn_std,
-                                   init_std=init_std,
-                                   min_std=min_std,
-                                   max_std=max_std,
-                                   std_parameterization=std_parameterization,
-                                   layer_normalization=layer_normalization)
+        GaussianMLPModule.__init__(
+            self,
+            input_dim=self._obs_dim,
+            output_dim=self._action_dim,
+            hidden_sizes=hidden_sizes,
+            hidden_nonlinearity=hidden_nonlinearity,
+            hidden_w_init=hidden_w_init,
+            hidden_b_init=hidden_b_init,
+            output_nonlinearity=output_nonlinearity,
+            output_w_init=output_w_init,
+            output_b_init=output_b_init,
+            learn_std=learn_std,
+            init_std=init_std,
+            min_std=min_std,
+            max_std=max_std,
+            std_parameterization=std_parameterization,
+            layer_normalization=layer_normalization,
+        )
 
     def get_action(self, observation):
         """Get a single action given an observation.
@@ -105,9 +109,13 @@ class GaussianMLPPolicy(Policy, GaussianMLPModule):
         with torch.no_grad():
             observation = torch.Tensor(observation).unsqueeze(0)
             dist = self.forward(observation)
-            return (dist.rsample().squeeze(0).numpy(),
-                    dict(mean=dist.mean.squeeze(0).numpy(),
-                         log_std=(dist.variance**.5).log().squeeze(0).numpy()))
+            return (
+                dist.rsample().squeeze(0).cpu().numpy(),
+                dict(
+                    mean=dist.mean.squeeze(0).cpu().numpy(),
+                    log_std=(dist.variance ** 0.5).log().squeeze(0).cpu().numpy(),
+                ),
+            )
 
     def get_actions(self, observations):
         """Get actions given observations.
@@ -126,9 +134,13 @@ class GaussianMLPPolicy(Policy, GaussianMLPModule):
         """
         with torch.no_grad():
             dist = self.forward(torch.Tensor(observations))
-            return (dist.rsample().numpy(),
-                    dict(mean=dist.mean.numpy(),
-                         log_std=(dist.variance**.5).log().numpy()))
+            return (
+                dist.rsample().cpu().numpy(),
+                dict(
+                    mean=dist.mean.cpu().numpy(),
+                    log_std=(dist.variance ** 0.5).log().cpu().numpy(),
+                ),
+            )
 
     def log_likelihood(self, observation, action):
         """Compute log likelihood given observations and action.

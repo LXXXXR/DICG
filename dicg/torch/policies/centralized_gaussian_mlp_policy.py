@@ -8,26 +8,30 @@ import numpy as np
 from torch.distributions import Normal, MultivariateNormal, Independent
 from dicg.torch.modules import GaussianMLPModule
 
+
 class CentralizedGaussianMLPPolicy(GaussianMLPModule):
-    def __init__(self,
-                 env_spec,
-                 n_agents,
-                 hidden_sizes=(32, 32),
-                 hidden_nonlinearity=torch.tanh,
-                 hidden_w_init=nn.init.xavier_uniform_,
-                 hidden_b_init=nn.init.zeros_,
-                 output_nonlinearity=None,
-                 output_w_init=nn.init.xavier_uniform_,
-                 output_b_init=nn.init.zeros_,
-                 layer_normalization=False,
-                 share_std=False,
-                 name='CentralizedGaussianMLPPolicy'):
-        assert isinstance(env_spec.action_space, akro.Box), (
-            'Gaussian policy only works with akro.Box action space.')
+    def __init__(
+        self,
+        env_spec,
+        n_agents,
+        hidden_sizes=(32, 32),
+        hidden_nonlinearity=torch.tanh,
+        hidden_w_init=nn.init.xavier_uniform_,
+        hidden_b_init=nn.init.zeros_,
+        output_nonlinearity=None,
+        output_w_init=nn.init.xavier_uniform_,
+        output_b_init=nn.init.zeros_,
+        layer_normalization=False,
+        share_std=False,
+        name="CentralizedGaussianMLPPolicy",
+    ):
+        assert isinstance(
+            env_spec.action_space, akro.Box
+        ), "Gaussian policy only works with akro.Box action space."
 
         self.centralized = True
         self.vectorized = True
-        
+
         self._n_agents = n_agents
         self._obs_dim = env_spec.observation_space.flat_dim
         self._single_agent_action_dim = env_spec.action_space.shape[0]
@@ -35,7 +39,8 @@ class CentralizedGaussianMLPPolicy(GaussianMLPModule):
         self.name = name
         self.share_std = share_std
 
-        GaussianMLPModule.__init__(self,
+        GaussianMLPModule.__init__(
+            self,
             input_dim=self._obs_dim,
             output_dim=self._single_agent_action_dim * self._n_agents,
             single_agent_action_dim=self._single_agent_action_dim,
@@ -52,12 +57,12 @@ class CentralizedGaussianMLPPolicy(GaussianMLPModule):
             init_std=1.0,
             min_std=1e-6,
             max_std=None,
-            std_parameterization='exp',
-            layer_normalization=False)
+            std_parameterization="exp",
+            layer_normalization=False,
+        )
 
     def grad_norm(self):
-        return np.sqrt(
-            np.sum([p.grad.norm(2).item() ** 2 for p in self.parameters()]))
+        return np.sqrt(np.sum([p.grad.norm(2).item() ** 2 for p in self.parameters()]))
 
     def forward(self, obs_n, avail_actions_n=None):
         """
@@ -95,14 +100,16 @@ class CentralizedGaussianMLPPolicy(GaussianMLPModule):
         with torch.no_grad():
             dists_n = self.forward(obs_n)
             if not greedy:
-                actions_n = dists_n.sample().numpy()
+                actions_n = dists_n.sample().cpu().numpy()
             else:
-                actions_n = dists_n.mean.numpy()
+                actions_n = dists_n.mean.cpu().numpy()
             agent_infos_n = {}
-            agent_infos_n['action_mean'] = [dists_n.mean[i].numpy() 
-                for i in range(len(actions_n))]
-            agent_infos_n['action_std'] = [dists_n.stddev[i].numpy() 
-                for i in range(len(actions_n))]
+            agent_infos_n["action_mean"] = [
+                dists_n.mean[i].cpu().numpy() for i in range(len(actions_n))
+            ]
+            agent_infos_n["action_std"] = [
+                dists_n.stddev[i].cpu().numpy() for i in range(len(actions_n))
+            ]
 
             return actions_n, agent_infos_n
 
@@ -112,7 +119,7 @@ class CentralizedGaussianMLPPolicy(GaussianMLPModule):
     def entropy(self, observations, avail_actions_n=None):
         dists_n = self.forward(observations)
         entropy = dists_n.entropy()
-        entropy = entropy.mean(axis=-1) # Asuming independent actions
+        entropy = entropy.mean(axis=-1)  # Asuming independent actions
         return entropy
 
     def log_likelihood(self, observations, avail_actions_n, actions):
@@ -122,7 +129,7 @@ class CentralizedGaussianMLPPolicy(GaussianMLPModule):
         # For n agents action probability can be treated as independent
         # Pa = prob_i^n Pa_i
         # log(Pa) = sum_i^n log(Pa_i)
-        llhs = llhs.sum(axis=-1) # Asuming independent actions
+        llhs = llhs.sum(axis=-1)  # Asuming independent actions
         # llhs.shape = (n_paths, max_path_length)
         return llhs
 

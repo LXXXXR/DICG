@@ -27,7 +27,7 @@ from dicg.torch.algos import CentralizedMAPPO
 from dicg.torch.policies import DICGCECategoricalMLPPolicy
 from dicg.experiment.local_runner_wrapper import LocalRunnerWrapper
 from dicg.sampler import CentralizedMAOnPolicyVectorizedSampler
-from dicg.utils import set_cpu_num
+from dicg.utils import set_cpu_num, get_device
 
 import wandb
 
@@ -120,9 +120,11 @@ def run(args):
                 residual=bool(args.residual),
                 gcn_bias=bool(args.gcn_bias),
                 categorical_mlp_hidden_sizes=args.categorical_mlp_hidden_sizes,
-            )
+            ).to(get_device())
 
-            baseline = GaussianMLPBaseline(env_spec=env.spec, hidden_sizes=(64, 64, 64))
+            baseline = GaussianMLPBaseline(
+                env_spec=env.spec, hidden_sizes=(64, 64, 64)
+            ).to(get_device())
 
             # Set max_path_length <= max_steps
             # If max_path_length > max_steps, algo will pad obs
@@ -142,7 +144,7 @@ def run(args):
                 clip_grad_norm=args.clip_grad_norm,
                 optimization_n_minibatches=args.opt_n_minibatches,
                 optimization_mini_epochs=args.opt_mini_epochs,
-            )
+            ).to(get_device())
 
             runner.setup(
                 algo,

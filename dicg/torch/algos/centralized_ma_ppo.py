@@ -20,6 +20,7 @@ from garage.np.baselines import LinearFeatureBaseline
 
 from dicg.np.algos import MABatchPolopt
 from dicg.torch.algos.utils import pad_one_to_last
+from dicg.utils import get_device
 
 import wandb
 
@@ -349,8 +350,8 @@ class CentralizedMAPPO(MABatchPolopt):
             )
             advantages = F.batch_norm(
                 advantages.t(),
-                torch.Tensor(means),
-                torch.Tensor(variances),
+                torch.Tensor(means).to(device=get_device()),
+                torch.Tensor(variances).to(device=get_device()),
                 eps=self._eps,
             ).t()
 
@@ -528,8 +529,12 @@ class CentralizedMAPPO(MABatchPolopt):
                 )
                 for path in paths
             ]
+        ).to(get_device())
+        valids = (
+            torch.Tensor([len(path["actions"]) for path in paths])
+            .int()
+            .to(get_device())
         )
-        valids = torch.Tensor([len(path["actions"]) for path in paths]).int()
         obs = torch.stack(
             [
                 pad_to_last(
@@ -537,7 +542,7 @@ class CentralizedMAPPO(MABatchPolopt):
                 )
                 for path in paths
             ]
-        )
+        ).to(get_device())
         avail_actions = torch.stack(
             [
                 pad_one_to_last(
@@ -545,19 +550,21 @@ class CentralizedMAPPO(MABatchPolopt):
                 )
                 for path in paths
             ]
+        ).to(
+            get_device()
         )  # Cannot pad all zero since prob sum cannot be zero
         actions = torch.stack(
             [
                 pad_to_last(path["actions"], total_length=self.max_path_length, axis=0)
                 for path in paths
             ]
-        )
+        ).to(get_device())
         rewards = torch.stack(
             [
                 pad_to_last(path["rewards"], total_length=self.max_path_length)
                 for path in paths
             ]
-        )
+        ).to(get_device())
 
         if isinstance(self.baseline, LinearFeatureBaseline):
             baselines = torch.stack(
@@ -567,7 +574,7 @@ class CentralizedMAPPO(MABatchPolopt):
                     )
                     for path in paths
                 ]
-            )
+            ).to(get_device())
         else:
             with torch.no_grad():
                 baselines = self.baseline.forward(obs)

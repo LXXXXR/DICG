@@ -2,6 +2,8 @@
 import torch
 import torch.nn.functional as F
 
+from dicg.utils import get_device
+
 
 class _Default:  # pylint: disable=too-few-public-methods
     """A wrapper class to represent default arguments.
@@ -40,8 +42,12 @@ def make_optimizer(optimizer_type, module, **kwargs):
         opt_type, opt_args = optimizer_type
         for name, arg in kwargs.items():
             if not isinstance(arg, _Default):
-                raise ValueError('Should not specify {} and explicit \
-                    optimizer args at the same time'.format(name))
+                raise ValueError(
+                    "Should not specify {} and explicit \
+                    optimizer args at the same time".format(
+                        name
+                    )
+                )
         return opt_type(module.parameters(), **opt_args)
 
     opt_args = {}
@@ -53,8 +59,7 @@ def make_optimizer(optimizer_type, module, **kwargs):
     return optimizer_type(module.parameters(), **opt_args)
 
 
-def compute_advantages(discount, gae_lambda, max_path_length, baselines,
-                       rewards):
+def compute_advantages(discount, gae_lambda, max_path_length, baselines, rewards):
     """Calculate advantages.
 
     Advantages are a discounted cumulative sum.
@@ -103,11 +108,12 @@ def compute_advantages(discount, gae_lambda, max_path_length, baselines,
             episode should be set to 0.
 
     """
-    adv_filter = torch.full((1, 1, 1, max_path_length - 1),
-                            discount * gae_lambda)
+    adv_filter = torch.full(
+        (1, 1, 1, max_path_length - 1), discount * gae_lambda, device=get_device()
+    )
     adv_filter = torch.cumprod(F.pad(adv_filter, (1, 0), value=1), dim=-1)
 
-    deltas = (rewards + discount * F.pad(baselines, (0, 1))[:, 1:] - baselines)
+    deltas = rewards + discount * F.pad(baselines, (0, 1))[:, 1:] - baselines
     deltas = F.pad(deltas, (0, max_path_length - 1)).unsqueeze(0).unsqueeze(0)
 
     advantages = F.conv2d(deltas, adv_filter, stride=1).squeeze()
@@ -136,8 +142,7 @@ def pad_to_last(nums, total_length, axis=-1, val=0):
     axis = (axis + len(tensor.shape)) if axis < 0 else axis
 
     if len(tensor.shape) <= axis:
-        raise IndexError('axis {} is out of range {}'.format(
-            axis, tensor.shape))
+        raise IndexError("axis {} is out of range {}".format(axis, tensor.shape))
 
     padding_config = [0, 0] * len(tensor.shape)
     padding_idx = abs(axis - len(tensor.shape)) * 2 - 1
@@ -158,4 +163,4 @@ def filter_valids(tensor, valids):
         torch.Tensor: Filtered Tensor
 
     """
-    return [tensor[i][:valids[i]] for i in range(len(valids))]
+    return [tensor[i][: valids[i]] for i in range(len(valids))]

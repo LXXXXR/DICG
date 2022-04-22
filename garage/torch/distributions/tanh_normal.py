@@ -3,6 +3,8 @@ import torch
 from torch.distributions import Normal
 from torch.distributions.independent import Independent
 
+from dicg.utils import get_device
+
 
 class TanhNormal(torch.distributions.Distribution):
     r"""A distribution induced by applying a tanh transformation to a Gaussian random variable.
@@ -16,7 +18,7 @@ class TanhNormal(torch.distributions.Distribution):
         loc (torch.Tensor): The mean of this distribution.
         scale (torch.Tensor): The stdev of this distribution.
 
-    """ # noqa: 501
+    """  # noqa: 501
 
     def __init__(self, loc, scale):
         self._normal = Independent(Normal(loc, scale), 1)
@@ -51,9 +53,10 @@ class TanhNormal(torch.distributions.Distribution):
         if pre_tanh_value is None:
             pre_tanh_value = torch.log((1 + value) / (1 - value)) / 2
         norm_lp = self._normal.log_prob(pre_tanh_value)
-        ret = (norm_lp - torch.sum(
-            torch.log(self._clip_but_pass_gradient((1. - value**2)) + epsilon),
-            axis=-1))
+        ret = norm_lp - torch.sum(
+            torch.log(self._clip_but_pass_gradient((1.0 - value ** 2)) + epsilon),
+            axis=-1,
+        )
         return ret
 
     def sample(self, sample_shape=torch.Size()):
@@ -156,7 +159,9 @@ class TanhNormal(torch.distributions.Distribution):
 
         """
         # pylint: disable=protected-access
-        new = cls(torch.zeros(1), torch.zeros(1))
+        new = cls(
+            torch.zeros(1, device=get_device()), torch.zeros(1, device=get_device())
+        )
         new._normal = new_normal
         return new
 
@@ -234,7 +239,7 @@ class TanhNormal(torch.distributions.Distribution):
         return self._normal.entropy()
 
     @staticmethod
-    def _clip_but_pass_gradient(x, lower=0., upper=1.):
+    def _clip_but_pass_gradient(x, lower=0.0, upper=1.0):
         """Clipping function that allows for gradients to flow through.
 
         Args:
@@ -249,7 +254,7 @@ class TanhNormal(torch.distributions.Distribution):
         clip_up = (x > upper).float()
         clip_low = (x < lower).float()
         with torch.no_grad():
-            clip = ((upper - x) * clip_up + (lower - x) * clip_low)
+            clip = (upper - x) * clip_up + (lower - x) * clip_low
         return x + clip
 
     def __repr__(self):

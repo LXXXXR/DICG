@@ -27,7 +27,7 @@ def torch_to_np(value_in):
         tuple[numpy.ndarray]: Tuple of data in numpy arrays.
 
     """
-    value_out = tuple(v.numpy() for v in value_in)
+    value_out = tuple(v.cpu().numpy() for v in value_in)
     return value_out
 
 
@@ -43,7 +43,7 @@ def flatten_batch(tensor):
         torch.Tensor: Flattened tensor.
 
     """
-    return tensor.reshape((-1, ) + tensor.shape[2:])
+    return tensor.reshape((-1,) + tensor.shape[2:])
 
 
 def update_module_params(module, new_params):  # noqa: D202
@@ -70,8 +70,8 @@ def update_module_params(module, new_params):  # noqa: D202
     named_modules = dict(module.named_modules())
 
     for name, new_param in new_params.items():
-        if '.' in name:
-            module_name, param_name = tuple(name.rsplit('.', 1))
+        if "." in name:
+            module_name, param_name = tuple(name.rsplit(".", 1))
             if module_name in named_modules:
                 update(named_modules[module_name], param_name, new_param)
         else:

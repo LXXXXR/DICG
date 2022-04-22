@@ -7,6 +7,7 @@ import numpy as np
 
 from dicg.torch.modules import CategoricalMLPModule
 from garage.torch.policies import Policy
+from dicg.utils import get_device
 
 
 class DecCategoricalMLPPolicy(Policy, CategoricalMLPModule):
@@ -43,55 +44,63 @@ class DecCategoricalMLPPolicy(Policy, CategoricalMLPModule):
 
     """
 
-    def __init__(self,
-                 env_spec,
-                 n_agents,
-                 hidden_sizes=(32, 32),
-                 hidden_nonlinearity=torch.tanh,
-                 hidden_w_init=nn.init.xavier_uniform_,
-                 hidden_b_init=nn.init.zeros_,
-                 output_nonlinearity=None,
-                 output_w_init=nn.init.xavier_uniform_,
-                 output_b_init=nn.init.zeros_,
-                 layer_normalization=False,
-                 name='DecCategoricalMLPPolicy'):
+    def __init__(
+        self,
+        env_spec,
+        n_agents,
+        hidden_sizes=(32, 32),
+        hidden_nonlinearity=torch.tanh,
+        hidden_w_init=nn.init.xavier_uniform_,
+        hidden_b_init=nn.init.zeros_,
+        output_nonlinearity=None,
+        output_w_init=nn.init.xavier_uniform_,
+        output_b_init=nn.init.zeros_,
+        layer_normalization=False,
+        name="DecCategoricalMLPPolicy",
+    ):
 
         assert isinstance(env_spec.action_space, akro.Discrete), (
-            'CategoricalMLPPolicy only works with akro.Discrete action '
-            'space.')
+            "CategoricalMLPPolicy only works with akro.Discrete action " "space."
+        )
 
-        self.centralized = True # centralized training
+        self.centralized = True  # centralized training
 
         self._n_agents = n_agents
-        self._obs_dim = int(env_spec.observation_space.flat_dim / n_agents) # dec obs_dim
+        self._obs_dim = int(
+            env_spec.observation_space.flat_dim / n_agents
+        )  # dec obs_dim
         self._action_dim = env_spec.action_space.n
 
         Policy.__init__(self, env_spec, name)
-        CategoricalMLPModule.__init__(self,
-                                      input_dim=self._obs_dim,
-                                      output_dim=self._action_dim,
-                                      hidden_sizes=hidden_sizes,
-                                      hidden_nonlinearity=hidden_nonlinearity,
-                                      hidden_w_init=hidden_w_init,
-                                      hidden_b_init=hidden_b_init,
-                                      output_nonlinearity=output_nonlinearity,
-                                      output_w_init=output_w_init,
-                                      output_b_init=output_b_init,
-                                      layer_normalization=layer_normalization)
+        CategoricalMLPModule.__init__(
+            self,
+            input_dim=self._obs_dim,
+            output_dim=self._action_dim,
+            hidden_sizes=hidden_sizes,
+            hidden_nonlinearity=hidden_nonlinearity,
+            hidden_w_init=hidden_w_init,
+            hidden_b_init=hidden_b_init,
+            output_nonlinearity=output_nonlinearity,
+            output_w_init=output_w_init,
+            output_b_init=output_b_init,
+            layer_normalization=layer_normalization,
+        )
 
     def grad_norm(self):
-        return np.sqrt(
-            np.sum([p.grad.norm(2).item() ** 2 for p in self.parameters()]))
+        return np.sqrt(np.sum([p.grad.norm(2).item() ** 2 for p in self.parameters()]))
 
     def forward(self, obs, avail_actions):
         obs = obs.reshape(obs.shape[:-1] + (self._n_agents, -1))
         dist = super().forward(obs)
         # Apply available actions mask
         avail_actions = avail_actions.reshape(
-            avail_actions.shape[:-1] + (self._n_agents, -1))
-        masked_probs = dist.probs * avail_actions # mask
-        masked_probs = masked_probs / masked_probs.sum(dim=-1, keepdim=True) # renormalize
-        masked_dist = Categorical(probs=masked_probs) # redefine distribution
+            avail_actions.shape[:-1] + (self._n_agents, -1)
+        )
+        masked_probs = dist.probs * avail_actions  # mask
+        masked_probs = masked_probs / masked_probs.sum(
+            dim=-1, keepdim=True
+        )  # renormalize
+        masked_dist = Categorical(probs=masked_probs)  # redefine distribution
         return masked_dist
 
     def get_action(self, observation):
@@ -113,8 +122,10 @@ class DecCategoricalMLPPolicy(Policy, CategoricalMLPModule):
         with torch.no_grad():
             observation = torch.Tensor(observation).unsqueeze(0)
             dist = self.forward(observation)
-            return (dist.sample().squeeze(0).numpy(), 
-                        dict(probs=dist._param.numpy()))
+            return (
+                dist.sample().squeeze(0).cpu().numpy(),
+                dict(probs=dist._param.cpu().numpy()),
+            )
 
     def get_actions(self, observations, avail_actions, greedy=False):
         """Get actions given observations.
@@ -133,15 +144,19 @@ class DecCategoricalMLPPolicy(Policy, CategoricalMLPModule):
         """
         with torch.no_grad():
             # obs.shape = (n_agents, n_envs, obs_dim)
-            dist = self.forward(torch.Tensor(observations), torch.Tensor(avail_actions))
-            actions = dist.sample().numpy()
+            dist = self.forward(
+                torch.Tensor(observations).to(get_device()),
+                torch.Tensor(avail_actions).to(get_device()),
+            )
+            actions = dist.sample().cpu().numpy()
             if not greedy:
-                actions = dist.sample().numpy()
+                actions = dist.sample().cpu().numpy()
             else:
-                actions = np.argmax(dist.probs.numpy(), axis=-1)
+                actions = np.argmax(dist.probs.cpu().numpy(), axis=-1)
             agent_infos = {}
-            agent_infos['action_probs'] = [dist.probs[i].numpy() 
-                for i in range(len(actions))]
+            agent_infos["action_probs"] = [
+                dist.probs[i].cpu().numpy() for i in range(len(actions))
+            ]
             return actions, agent_infos
 
     def log_likelihood(self, observations, avail_actions, actions):

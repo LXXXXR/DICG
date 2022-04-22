@@ -7,23 +7,26 @@ import copy
 from torch.distributions import Normal
 from dicg.torch.modules.gaussian_mlp_module import GaussianMLPModule
 from dicg.torch.modules.dicg_base import DICGBase
+from dicg.utils import get_device
+
 
 class DICGCritic(DICGBase):
-
-    def __init__(self,
-                 env_spec,
-                 n_agents,
-                 encoder_hidden_sizes=(128, ),
-                 embedding_dim=64,
-                 decoder_hidden_sizes=(64, ),
-                 attention_type='general',
-                 n_gcn_layers=2,
-                 residual=True,
-                 gcn_bias=True,
-                 share_std=False,
-                 state_include_actions=False,
-                 aggregator_type='sum',
-                 name='dicg_critic'):
+    def __init__(
+        self,
+        env_spec,
+        n_agents,
+        encoder_hidden_sizes=(128,),
+        embedding_dim=64,
+        decoder_hidden_sizes=(64,),
+        attention_type="general",
+        n_gcn_layers=2,
+        residual=True,
+        gcn_bias=True,
+        share_std=False,
+        state_include_actions=False,
+        aggregator_type="sum",
+        name="dicg_critic",
+    ):
 
         super().__init__(
             env_spec=env_spec,
@@ -38,9 +41,9 @@ class DICGCritic(DICGBase):
         )
 
         self.aggregator_type = aggregator_type
-        if aggregator_type == 'sum':
+        if aggregator_type == "sum":
             aggregator_input_dim = embedding_dim
-        elif aggregator_type == 'direct':
+        elif aggregator_type == "direct":
             aggregator_input_dim = embedding_dim * self._n_agents
 
         self.baseline_aggregator = GaussianMLPModule(
@@ -54,7 +57,7 @@ class DICGCritic(DICGBase):
         self.residual = residual
 
     def compute_loss(self, obs_n, returns):
-        obs_n = torch.Tensor(obs_n)
+        # obs_n = torch.Tensor(obs_n)
         obs_n = obs_n.reshape(obs_n.shape[:-1] + (self._n_agents, -1))
         embeddings_collection, attention_weights = super().forward(obs_n)
         if self.residual:
@@ -62,18 +65,18 @@ class DICGCritic(DICGBase):
         else:
             emb = embeddings_collection[-1]
         # shared std, any std = std.mean()
-        if self.aggregator_type == 'sum':
-            mean, std = self.baseline_aggregator(emb)     
+        if self.aggregator_type == "sum":
+            mean, std = self.baseline_aggregator(emb)
             baseline_dist = Normal(mean.squeeze(-1).sum(-1), std.mean())
-        elif self.aggregator_type == 'direct':
-            emb = emb.reshape(emb.shape[:-2] + (-1, )) # concatenate embeddings
+        elif self.aggregator_type == "direct":
+            emb = emb.reshape(emb.shape[:-2] + (-1,))  # concatenate embeddings
             mean, std = self.baseline_aggregator(emb)
             baseline_dist = Normal(mean.squeeze(-1), std.mean())
         ll = baseline_dist.log_prob(returns)
-        return -ll.mean() # baseline loss
+        return -ll.mean()  # baseline loss
 
     def forward(self, obs_n):
-        obs_n = torch.Tensor(obs_n)
+        # obs_n = torch.Tensor(obs_n, device=get_device())
         obs_n = obs_n.reshape(obs_n.shape[:-1] + (self._n_agents, -1))
         embeddings_collection, attention_weights = super().forward(obs_n)
         if self.residual:
@@ -81,11 +84,11 @@ class DICGCritic(DICGBase):
         else:
             emb = embeddings_collection[-1]
 
-        if self.aggregator_type == 'sum':
+        if self.aggregator_type == "sum":
             mean, _ = self.baseline_aggregator(emb)
             return mean.squeeze(-1).sum(-1)
-        elif self.aggregator_type == 'direct':
-            emb = emb.reshape(emb.shape[:-2] + (-1, ))
+        elif self.aggregator_type == "direct":
+            emb = emb.reshape(emb.shape[:-2] + (-1,))
             mean, _ = self.baseline_aggregator(emb)
             return mean.squeeze(-1)
 

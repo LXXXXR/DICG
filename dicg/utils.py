@@ -11,3 +11,12 @@ def set_cpu_num(cpu_num):
     os.environ["VECLIB_MAXIMUM_THREADS"] = str(cpu_num)
     os.environ["NUMEXPR_NUM_THREADS"] = str(cpu_num)
     torch.set_num_threads(cpu_num)
+
+
+def get_device():
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+    else:
+        device = torch.device("cpu")
+
+    return device

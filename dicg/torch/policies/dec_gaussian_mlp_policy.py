@@ -8,32 +8,37 @@ import numpy as np
 from torch.distributions import Normal, MultivariateNormal, Independent
 from dicg.torch.modules import GaussianMLPModule
 
+
 class DecGaussianMLPPolicy(GaussianMLPModule):
-    def __init__(self,
-                 env_spec,
-                 hidden_sizes=(32, 32),
-                 hidden_nonlinearity=torch.tanh,
-                 hidden_w_init=nn.init.xavier_uniform_,
-                 hidden_b_init=nn.init.zeros_,
-                 output_nonlinearity=None,
-                 output_w_init=nn.init.xavier_uniform_,
-                 output_b_init=nn.init.zeros_,
-                 layer_normalization=False,
-                 share_std=False,
-                 name='CentralizedGaussianMLPPolicy'):
-        assert isinstance(env_spec.action_space, akro.Box), (
-            'Gaussian policy only works with akro.Box action space.')
+    def __init__(
+        self,
+        env_spec,
+        hidden_sizes=(32, 32),
+        hidden_nonlinearity=torch.tanh,
+        hidden_w_init=nn.init.xavier_uniform_,
+        hidden_b_init=nn.init.zeros_,
+        output_nonlinearity=None,
+        output_w_init=nn.init.xavier_uniform_,
+        output_b_init=nn.init.zeros_,
+        layer_normalization=False,
+        share_std=False,
+        name="CentralizedGaussianMLPPolicy",
+    ):
+        assert isinstance(
+            env_spec.action_space, akro.Box
+        ), "Gaussian policy only works with akro.Box action space."
 
         self.centralized = False
         self.vectorized = True
-        
+
         self._obs_dim = env_spec.observation_space.flat_dim
         self._action_dim = env_spec.action_space.shape[0]
 
         self.name = name
         self.share_std = share_std
 
-        GaussianMLPModule.__init__(self,
+        GaussianMLPModule.__init__(
+            self,
             input_dim=self._obs_dim,
             output_dim=self._action_dim,
             hidden_sizes=hidden_sizes,
@@ -48,12 +53,12 @@ class DecGaussianMLPPolicy(GaussianMLPModule):
             init_std=1.0,
             min_std=1e-6,
             max_std=None,
-            std_parameterization='exp',
-            layer_normalization=False)
+            std_parameterization="exp",
+            layer_normalization=False,
+        )
 
     def grad_norm(self):
-        return np.sqrt(
-            np.sum([p.grad.norm(2).item() ** 2 for p in self.parameters()]))
+        return np.sqrt(np.sum([p.grad.norm(2).item() ** 2 for p in self.parameters()]))
 
     def forward(self, obs_n, avail_actions_n=None):
         """
@@ -85,13 +90,17 @@ class DecGaussianMLPPolicy(GaussianMLPModule):
         with torch.no_grad():
             dists_n = self.forward(obs_n)
             if not greedy:
-                actions_n = dists_n.sample().numpy()
+                actions_n = dists_n.sample().cpu().numpy()
             else:
-                actions_n = dists_n.mean.numpy()
+                actions_n = dists_n.mean.cpu().numpy()
             agent_infos_n = []
             for i in range(len(actions_n)):
-                agent_infos_n.append(dict(action_mean=dists_n.mean[i].numpy(),
-                                          action_std=dists_n.stddev[i].numpy()))
+                agent_infos_n.append(
+                    dict(
+                        action_mean=dists_n.mean[i].cpu().numpy(),
+                        action_std=dists_n.stddev[i].cpu().numpy(),
+                    )
+                )
             return actions_n, agent_infos_n
 
     def reset(self, dones):
@@ -103,7 +112,7 @@ class DecGaussianMLPPolicy(GaussianMLPModule):
 
     def log_likelihood(self, observations, avail_actions_n, actions):
         dists_n = self.forward(observations)
-        if self._action_dim == 1: # 1D action
+        if self._action_dim == 1:  # 1D action
             actions = actions.unsqueeze(-1)
         llhs = dists_n.log_prob(actions)
         return llhs

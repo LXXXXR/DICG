@@ -7,34 +7,40 @@ import copy
 from torch.distributions import Normal, MultivariateNormal, Independent
 from dicg.torch.modules import GaussianLSTMModule, MLPEncoderModule
 
-class DecGaussianLSTMPolicy(nn.Module):
-    def __init__(self,
-                 env_spec,
-                 n_agents,
-                 encoder_hidden_sizes=(64, 64),
-                 embedding_dim=64,
-                 lstm_hidden_size=64,
-                 share_std=False,
-                 state_include_actions=False,
-                 hidden_nonlinearity=torch.tanh,
-                 hidden_w_init=nn.init.xavier_uniform_,
-                 hidden_b_init=nn.init.zeros_,
-                 output_nonlinearity=None,
-                 output_w_init=nn.init.xavier_uniform_,
-                 output_b_init=nn.init.zeros_,
-                 layer_normalization=False,
-                 name='DecGaussianLSTMPolicy'):
 
-        assert isinstance(env_spec.action_space, akro.Box), (
-            'Gaussian policy only works with akro.Box action space.')
+class DecGaussianLSTMPolicy(nn.Module):
+    def __init__(
+        self,
+        env_spec,
+        n_agents,
+        encoder_hidden_sizes=(64, 64),
+        embedding_dim=64,
+        lstm_hidden_size=64,
+        share_std=False,
+        state_include_actions=False,
+        hidden_nonlinearity=torch.tanh,
+        hidden_w_init=nn.init.xavier_uniform_,
+        hidden_b_init=nn.init.zeros_,
+        output_nonlinearity=None,
+        output_w_init=nn.init.xavier_uniform_,
+        output_b_init=nn.init.zeros_,
+        layer_normalization=False,
+        name="DecGaussianLSTMPolicy",
+    ):
+
+        assert isinstance(
+            env_spec.action_space, akro.Box
+        ), "Gaussian policy only works with akro.Box action space."
 
         super().__init__()
 
-        self.centralized = True # use centralized sampler
+        self.centralized = True  # use centralized sampler
         self.vectorized = True
-        
+
         self._n_agents = n_agents
-        self._obs_dim = int(env_spec.observation_space.flat_dim / n_agents) # dec obs dim
+        self._obs_dim = int(
+            env_spec.observation_space.flat_dim / n_agents
+        )  # dec obs dim
         self._action_dim = env_spec.action_space.shape[0]
         self._embedding_dim = embedding_dim
 
@@ -50,7 +56,7 @@ class DecGaussianLSTMPolicy(nn.Module):
             mlp_input_dim = self._obs_dim + self._action_dim
         else:
             mlp_input_dim = self._obs_dim
-        
+
         self.encoder = MLPEncoderModule(
             input_dim=mlp_input_dim,
             output_dim=self._embedding_dim,
@@ -61,17 +67,18 @@ class DecGaussianLSTMPolicy(nn.Module):
             output_nonlinearity=output_nonlinearity,
             output_w_init=output_w_init,
             output_b_init=output_b_init,
-            layer_normalization=layer_normalization)
+            layer_normalization=layer_normalization,
+        )
 
-        self.gaussian_lstm_output_layer = \
-            GaussianLSTMModule(input_dim=self._embedding_dim,
-                               output_dim=self._action_dim,
-                               hidden_dim=lstm_hidden_size,
-                               share_std=self.share_std)
+        self.gaussian_lstm_output_layer = GaussianLSTMModule(
+            input_dim=self._embedding_dim,
+            output_dim=self._action_dim,
+            hidden_dim=lstm_hidden_size,
+            share_std=self.share_std,
+        )
 
     def grad_norm(self):
-        return np.sqrt(
-            np.sum([p.grad.norm(2).item() ** 2 for p in self.parameters()]))
+        return np.sqrt(np.sum([p.grad.norm(2).item() ** 2 for p in self.parameters()]))
 
     # Batch forward
     def forward(self, obs_n, avail_actions_n=None, actions_n=None):
@@ -96,20 +103,24 @@ class DecGaussianLSTMPolicy(nn.Module):
 
         inputs = self.encoder.forward(obs_n)
 
-        # inputs.shape = (n_paths, max_path_len, n_agents, emb_dim) 
+        # inputs.shape = (n_paths, max_path_len, n_agents, emb_dim)
         # Reshape to be compliant with the input shape requirement of LSTM
         inputs = inputs.transpose(0, 1)
-        inputs = inputs.reshape(max_path_len, n_paths * self._n_agents, self._embedding_dim)
+        inputs = inputs.reshape(
+            max_path_len, n_paths * self._n_agents, self._embedding_dim
+        )
 
         mean, std, _, _ = self.gaussian_lstm_output_layer.forward(inputs)
 
         # dists_n.loc.shape = (max_path_len, n_paths * n_agents, action_dim)
         # Need to reshape back dists_n
-        mean = mean.reshape(max_path_len, n_paths, self._n_agents, 
-                            self._action_dim).transpose(0, 1)
+        mean = mean.reshape(
+            max_path_len, n_paths, self._n_agents, self._action_dim
+        ).transpose(0, 1)
         if self.share_std:
-            std = std.reshape(max_path_len, n_paths, self._n_agents, 
-                              self._action_dim).transpose(0, 1)
+            std = std.reshape(
+                max_path_len, n_paths, self._n_agents, self._action_dim
+            ).transpose(0, 1)
             dists_n = Independent(Normal(mean, std), 1)
         else:
             dists_n = MultivariateNormal(mean, std)
@@ -126,17 +137,20 @@ class DecGaussianLSTMPolicy(nn.Module):
         n_envs = obs_n.shape[0]
         if self.state_include_actions:
             if self._prev_actions is None:
-                self._prev_actions = torch.zeros(n_envs, self._n_agents, self._action_dim)
+                self._prev_actions = torch.zeros(
+                    n_envs, self._n_agents, self._action_dim
+                )
             obs_n = torch.cat((obs_n, self._prev_actions), dim=-1)
 
         inputs = self.encoder.forward(obs_n)
 
         # input.shape = (n_envs, n_agents, emb_dim)
-        inputs = inputs.reshape(1, n_envs * self._n_agents, -1) # seq_len = 1
+        inputs = inputs.reshape(1, n_envs * self._n_agents, -1)  # seq_len = 1
         # input.shape = (1, n_envs * n_agents, emb_dim)
 
         mean, std, next_h, next_c = self.gaussian_lstm_output_layer.forward(
-            inputs, self._prev_hiddens, self._prev_cells)
+            inputs, self._prev_hiddens, self._prev_cells
+        )
         # mean.shape = (1, n_envs * n_agents, action_dim)
 
         self._prev_hiddens = next_h
@@ -149,10 +163,8 @@ class DecGaussianLSTMPolicy(nn.Module):
             dists_n = Independent(Normal(mean, std), 1)
         else:
             dists_n = MultivariateNormal(mean, std)
-        
+
         return dists_n
-
-
 
     def get_actions(self, obs_n, avail_actions_n=None, greedy=False):
         """Independent agent actions (not using an exponential joint action space)
@@ -165,14 +177,16 @@ class DecGaussianLSTMPolicy(nn.Module):
         with torch.no_grad():
             dists_n = self.step_forward(obs_n)
             if not greedy:
-                actions_n = dists_n.sample().numpy()
+                actions_n = dists_n.sample().cpu().numpy()
             else:
-                actions_n = dists_n.mean.numpy()
+                actions_n = dists_n.mean.cpu().numpy()
             agent_infos_n = {}
-            agent_infos_n['action_mean'] = [dists_n.mean[i].numpy() 
-                for i in range(len(actions_n))]
-            agent_infos_n['action_std'] = [dists_n.stddev[i].numpy() 
-                for i in range(len(actions_n))]
+            agent_infos_n["action_mean"] = [
+                dists_n.mean[i].cpu().numpy() for i in range(len(actions_n))
+            ]
+            agent_infos_n["action_std"] = [
+                dists_n.stddev[i].cpu().numpy() for i in range(len(actions_n))
+            ]
 
             if self.state_include_actions:
                 # actions_n.shape = (n_envs, self._n_agents, self._action_dim)
@@ -181,7 +195,7 @@ class DecGaussianLSTMPolicy(nn.Module):
             return actions_n, agent_infos_n
 
     def reset(self, dones):
-        if all(dones): # dones is synched
+        if all(dones):  # dones is synched
             self._prev_actions = None
             self._prev_hiddens = None
             self._prev_cells = None
@@ -189,7 +203,7 @@ class DecGaussianLSTMPolicy(nn.Module):
     def entropy(self, observations, avail_actions=None, actions=None):
         dists_n = self.forward(observations, avail_actions, actions)
         entropy = dists_n.entropy()
-        entropy = entropy.mean(axis=-1) # independent actions
+        entropy = entropy.mean(axis=-1)  # independent actions
         return entropy
 
     def log_likelihood(self, observations, avail_actions, actions):
@@ -203,12 +217,11 @@ class DecGaussianLSTMPolicy(nn.Module):
         # For n agents action probability can be treated as independent
         # Pa = prob_i^n Pa_i
         # log(Pa) = sum_i^n log(Pa_i)
-        llhs = llhs.sum(axis=-1) # Asuming independent actions
+        llhs = llhs.sum(axis=-1)  # Asuming independent actions
         # llhs.shape = (n_paths, max_path_length)
         return llhs
 
     @property
     def recurrent(self):
         return True
-    
 

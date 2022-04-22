@@ -27,7 +27,7 @@ from dicg.torch.baselines import DICGCritic
 from dicg.torch.policies import DecCategoricalMLPPolicy
 from dicg.experiment.local_runner_wrapper import LocalRunnerWrapper
 from dicg.sampler import CentralizedMAOnPolicyVectorizedSampler
-from dicg.utils import set_cpu_num
+from dicg.utils import set_cpu_num, get_device
 
 import wandb
 
@@ -117,7 +117,7 @@ def run(args):
                 hidden_nonlinearity=hidden_nonlinearity,
                 hidden_sizes=args.policy_hidden_sizes,
                 name="dec_categorical_mlp_policy",
-            )
+            ).to(get_device())
 
             baseline = DICGCritic(
                 env.spec,
@@ -129,7 +129,7 @@ def run(args):
                 residual=args.residual,
                 gcn_bias=args.gcn_bias,
                 aggregator_type=args.aggregator_type,
-            )
+            ).to(get_device())
 
             # Set max_path_length <= max_steps
             # If max_path_length > max_steps, algo will pad obs

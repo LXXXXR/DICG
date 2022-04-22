@@ -35,16 +35,18 @@ class MAML:
 
     """
 
-    def __init__(self,
-                 inner_algo,
-                 env,
-                 policy,
-                 baseline,
-                 meta_optimizer,
-                 meta_batch_size=40,
-                 inner_lr=0.1,
-                 outer_lr=1e-3,
-                 num_grad_updates=1):
+    def __init__(
+        self,
+        inner_algo,
+        env,
+        policy,
+        baseline,
+        meta_optimizer,
+        meta_batch_size=40,
+        inner_lr=0.1,
+        outer_lr=1e-3,
+        num_grad_updates=1,
+    ):
         if policy.vectorized:
             self.sampler_cls = OnPolicyVectorizedSampler
         else:
@@ -58,10 +60,9 @@ class MAML:
         self._meta_batch_size = meta_batch_size
         self._inner_algo = inner_algo
         self._inner_optimizer = DifferentiableSGD(self._policy, lr=inner_lr)
-        self._meta_optimizer = make_optimizer(meta_optimizer,
-                                              policy,
-                                              lr=_Default(outer_lr),
-                                              eps=_Default(1e-5))
+        self._meta_optimizer = make_optimizer(
+            meta_optimizer, policy, lr=_Default(outer_lr), eps=_Default(1e-5)
+        )
 
     def train(self, runner):
         """Obtain samples and start training for each epoch.
@@ -79,7 +80,7 @@ class MAML:
 
         for _ in runner.step_epochs():
             all_samples, all_params = self._obtain_samples(runner)
-            tabular.record('TotalEnvSteps', runner.total_env_steps)
+            tabular.record("TotalEnvSteps", runner.total_env_steps)
             last_return = self.train_once(runner, all_samples, all_params)
             runner.step_itr += 1
 
@@ -103,10 +104,9 @@ class MAML:
         """
         old_theta = dict(self._policy.named_parameters())
 
-        kl_before = self._compute_kl_constraint(itr,
-                                                all_samples,
-                                                all_params,
-                                                set_grad=False)
+        kl_before = self._compute_kl_constraint(
+            itr, all_samples, all_params, set_grad=False
+        )
 
         meta_objective = self._compute_meta_loss(itr, all_samples, all_params)
 
@@ -116,22 +116,26 @@ class MAML:
         self._meta_optimize(itr, all_samples, all_params)
 
         # Log
-        loss_after = self._compute_meta_loss(itr,
-                                             all_samples,
-                                             all_params,
-                                             set_grad=False)
-        kl_after = self._compute_kl_constraint(itr,
-                                               all_samples,
-                                               all_params,
-                                               set_grad=False)
+        loss_after = self._compute_meta_loss(
+            itr, all_samples, all_params, set_grad=False
+        )
+        kl_after = self._compute_kl_constraint(
+            itr, all_samples, all_params, set_grad=False
+        )
 
         with torch.no_grad():
             policy_entropy = self._compute_policy_entropy(
-                [task_samples[0] for task_samples in all_samples])
+                [task_samples[0] for task_samples in all_samples]
+            )
             average_return = self.evaluate_performance(
-                itr, all_samples, meta_objective.item(), loss_after.item(),
-                kl_before.item(), kl_after.item(),
-                policy_entropy.mean().item())
+                itr,
+                all_samples,
+                meta_objective.item(),
+                loss_after.item(),
+                kl_before.item(),
+                kl_after.item(),
+                policy_entropy.mean().item(),
+            )
 
         update_module_params(self._old_policy, old_theta)
 
@@ -200,12 +204,18 @@ class MAML:
         if isinstance(self._meta_optimizer, ConjugateGradientOptimizer):
             self._meta_optimizer.step(
                 f_loss=lambda: self._compute_meta_loss(
-                    itr, all_samples, all_params, set_grad=False),
+                    itr, all_samples, all_params, set_grad=False
+                ),
                 f_constraint=lambda: self._compute_kl_constraint(
-                    itr, all_samples, all_params))
+                    itr, all_samples, all_params
+                ),
+            )
         else:
-            self._meta_optimizer.step(lambda: self._compute_meta_loss(
-                itr, all_samples, all_params, set_grad=False))
+            self._meta_optimizer.step(
+                lambda: self._compute_meta_loss(
+                    itr, all_samples, all_params, set_grad=False
+                )
+            )
 
     def _compute_meta_loss(self, itr, all_samples, all_params, set_grad=True):
         """Compute loss to meta-optimize.
@@ -243,11 +253,7 @@ class MAML:
 
         return torch.stack(losses).mean()
 
-    def _compute_kl_constraint(self,
-                               itr,
-                               all_samples,
-                               all_params,
-                               set_grad=True):
+    def _compute_kl_constraint(self, itr, all_samples, all_params, set_grad=True):
         """Compute KL divergence.
 
         For each task, compute the KL divergence between the old policy
@@ -279,7 +285,8 @@ class MAML:
             with torch.set_grad_enabled(set_grad):
                 # pylint: disable=protected-access
                 kl = self._inner_algo._compute_kl_constraint(
-                    task_samples[-1].observations)
+                    task_samples[-1].observations
+                )
             kls.append(kl)
 
             update_module_params(self._policy, theta)
@@ -342,16 +349,19 @@ class MAML:
 
         """
         for path in paths:
-            path['returns'] = tensor_utils.discount_cumsum(
-                path['rewards'], self._inner_algo.discount)
+            path["returns"] = tensor_utils.discount_cumsum(
+                path["rewards"], self._inner_algo.discount
+            )
 
         self._baseline.fit(paths)
-        obs, actions, rewards, valids, baselines \
-            = self._inner_algo.process_samples(itr, paths)
+        obs, actions, rewards, valids, baselines = self._inner_algo.process_samples(
+            itr, paths
+        )
         return MAMLTrajectoryBatch(obs, actions, rewards, valids, baselines)
 
-    def evaluate_performance(self, itr, all_samples, loss_before, loss_after,
-                             kl_before, kl, policy_entropy):
+    def evaluate_performance(
+        self, itr, all_samples, loss_before, loss_after, kl_before, kl, policy_entropy
+    ):
         """Evaluate performance of this batch.
 
         Args:
@@ -369,46 +379,47 @@ class MAML:
             float: The average return in last epoch cycle.
 
         """
-        tabular.record('Iteration', itr)
+        tabular.record("Iteration", itr)
 
         for i in range(self._num_grad_updates + 1):
             all_rewards = [
-                path_rewards for task_samples in all_samples
-                for path_rewards in task_samples[i].rewards.numpy()
+                path_rewards
+                for task_samples in all_samples
+                for path_rewards in task_samples[i].rewards.cpu().numpy()
             ]
 
             discounted_returns = [
-                tensor_utils.discount_cumsum(path_rewards,
-                                             self._inner_algo.discount)[0]
+                tensor_utils.discount_cumsum(path_rewards, self._inner_algo.discount)[0]
                 for path_rewards in all_rewards
             ]
             undiscounted_returns = np.sum(all_rewards, axis=-1)
             average_return = np.mean(undiscounted_returns)
 
-            with tabular.prefix('Update_{0}/'.format(i)):
-                tabular.record('AverageDiscountedReturn',
-                               np.mean(discounted_returns))
-                tabular.record('AverageReturn', average_return)
-                tabular.record('StdReturn', np.std(undiscounted_returns))
-                tabular.record('MaxReturn', np.max(undiscounted_returns))
-                tabular.record('MinReturn', np.min(undiscounted_returns))
-                tabular.record('NumTrajs', len(all_rewards))
+            with tabular.prefix("Update_{0}/".format(i)):
+                tabular.record("AverageDiscountedReturn", np.mean(discounted_returns))
+                tabular.record("AverageReturn", average_return)
+                tabular.record("StdReturn", np.std(undiscounted_returns))
+                tabular.record("MaxReturn", np.max(undiscounted_returns))
+                tabular.record("MinReturn", np.min(undiscounted_returns))
+                tabular.record("NumTrajs", len(all_rewards))
 
-        with tabular.prefix(self._policy.name + '/'):
-            tabular.record('LossBefore', loss_before)
-            tabular.record('LossAfter', loss_after)
-            tabular.record('dLoss', loss_before - loss_after)
-            tabular.record('KLBefore', kl_before)
-            tabular.record('KLAfter', kl)
-            tabular.record('Entropy', policy_entropy)
+        with tabular.prefix(self._policy.name + "/"):
+            tabular.record("LossBefore", loss_before)
+            tabular.record("LossAfter", loss_after)
+            tabular.record("dLoss", loss_before - loss_after)
+            tabular.record("KLBefore", kl_before)
+            tabular.record("KLAfter", kl)
+            tabular.record("Entropy", policy_entropy)
 
         return average_return
 
 
 class MAMLTrajectoryBatch(
-        collections.namedtuple(
-            'MAMLTrajectoryBatch',
-            ['observations', 'actions', 'rewards', 'valids', 'baselines'])):
+    collections.namedtuple(
+        "MAMLTrajectoryBatch",
+        ["observations", "actions", "rewards", "valids", "baselines"],
+    )
+):
     r"""A tuple representing a batch of whole trajectories in MAML.
 
     A :class:`MAMLTrajectoryBatch` represents a batch of whole trajectories
