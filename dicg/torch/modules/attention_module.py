@@ -17,7 +17,7 @@ class AttentionModule(nn.Module):
             * general: :math:`score(H_j, q) = H_j^T W_a q`
     """
 
-    def __init__(self, dimensions, attention_type="general", n_agent=None):
+    def __init__(self, dimensions, attention_type="general"):
         super().__init__()
 
         self.attention_type = attention_type
