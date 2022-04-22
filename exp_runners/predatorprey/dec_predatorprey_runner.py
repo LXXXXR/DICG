@@ -25,7 +25,7 @@ from dicg.torch.algos import CentralizedMAPPO
 from dicg.torch.policies import DecCategoricalMLPPolicy
 from dicg.experiment.local_runner_wrapper import LocalRunnerWrapper
 from dicg.sampler import CentralizedMAOnPolicyVectorizedSampler
-from dicg.utils import set_cpu_num
+from dicg.utils import set_cpu_num, get_device
 
 import wandb
 
@@ -109,9 +109,11 @@ def run(args):
                 hidden_nonlinearity=hidden_nonlinearity,
                 hidden_sizes=args.hidden_sizes,
                 name="dec_categorical_mlp_policy",
-            )
+            ).to(get_device())
 
-            baseline = GaussianMLPBaseline(env_spec=env.spec, hidden_sizes=(64, 64, 64))
+            baseline = GaussianMLPBaseline(
+                env_spec=env.spec, hidden_sizes=(64, 64, 64)
+            ).to(get_device())
 
             # Set max_path_length <= max_steps
             # If max_path_length > max_steps, algo will pad obs

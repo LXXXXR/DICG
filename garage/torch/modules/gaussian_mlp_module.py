@@ -8,6 +8,7 @@ from torch.distributions.independent import Independent
 
 from garage.torch.modules.mlp_module import MLPModule
 from garage.torch.modules.multi_headed_mlp_module import MultiHeadedMLPModule
+from dicg.utils import get_device
 
 
 class GaussianMLPBaseModule(nn.Module):
@@ -67,28 +68,30 @@ class GaussianMLPBaseModule(nn.Module):
 
     """
 
-    def __init__(self,
-                 input_dim,
-                 output_dim,
-                 hidden_sizes=(32, 32),
-                 hidden_nonlinearity=torch.tanh,
-                 hidden_w_init=nn.init.xavier_uniform_,
-                 hidden_b_init=nn.init.zeros_,
-                 output_nonlinearity=None,
-                 output_w_init=nn.init.xavier_uniform_,
-                 output_b_init=nn.init.zeros_,
-                 learn_std=True,
-                 init_std=1.0,
-                 min_std=1e-6,
-                 max_std=None,
-                 std_hidden_sizes=(32, 32),
-                 std_hidden_nonlinearity=torch.tanh,
-                 std_hidden_w_init=nn.init.xavier_uniform_,
-                 std_hidden_b_init=nn.init.zeros_,
-                 std_output_nonlinearity=None,
-                 std_output_w_init=nn.init.xavier_uniform_,
-                 std_parameterization='exp',
-                 layer_normalization=False):
+    def __init__(
+        self,
+        input_dim,
+        output_dim,
+        hidden_sizes=(32, 32),
+        hidden_nonlinearity=torch.tanh,
+        hidden_w_init=nn.init.xavier_uniform_,
+        hidden_b_init=nn.init.zeros_,
+        output_nonlinearity=None,
+        output_w_init=nn.init.xavier_uniform_,
+        output_b_init=nn.init.zeros_,
+        learn_std=True,
+        init_std=1.0,
+        min_std=1e-6,
+        max_std=None,
+        std_hidden_sizes=(32, 32),
+        std_hidden_nonlinearity=torch.tanh,
+        std_hidden_w_init=nn.init.xavier_uniform_,
+        std_hidden_b_init=nn.init.zeros_,
+        std_output_nonlinearity=None,
+        std_output_w_init=nn.init.xavier_uniform_,
+        std_parameterization="exp",
+        layer_normalization=False,
+    ):
         super().__init__()
 
         self._input_dim = input_dim
@@ -112,7 +115,7 @@ class GaussianMLPBaseModule(nn.Module):
         self._output_b_init = output_b_init
         self._layer_normalization = layer_normalization
 
-        if self._std_parameterization not in ('exp', 'softplus'):
+        if self._std_parameterization not in ("exp", "softplus"):
             raise NotImplementedError
 
         init_std_param = torch.Tensor([init_std]).log()
@@ -146,12 +149,13 @@ class GaussianMLPBaseModule(nn.Module):
         if self._min_std_param or self._max_std_param:
             log_std_uncentered = log_std_uncentered.clamp(
                 min=self._to_scalar_if_not_none(self._min_std_param),
-                max=self._to_scalar_if_not_none(self._max_std_param))
+                max=self._to_scalar_if_not_none(self._max_std_param),
+            )
 
-        if self._std_parameterization == 'exp':
+        if self._std_parameterization == "exp":
             std = log_std_uncentered.exp()
         else:
-            std = log_std_uncentered.exp().exp().add(1.).log()
+            std = log_std_uncentered.exp().exp().add(1.0).log()
 
         dist = Independent(Normal(mean, std), 1)
 
@@ -214,38 +218,41 @@ class GaussianMLPModule(GaussianMLPBaseModule):
 
     """
 
-    def __init__(self,
-                 input_dim,
-                 output_dim,
-                 hidden_sizes=(32, 32),
-                 hidden_nonlinearity=torch.tanh,
-                 hidden_w_init=nn.init.xavier_uniform_,
-                 hidden_b_init=nn.init.zeros_,
-                 output_nonlinearity=None,
-                 output_w_init=nn.init.xavier_uniform_,
-                 output_b_init=nn.init.zeros_,
-                 learn_std=True,
-                 init_std=1.0,
-                 min_std=1e-6,
-                 max_std=None,
-                 std_parameterization='exp',
-                 layer_normalization=False):
-        super(GaussianMLPModule,
-              self).__init__(input_dim=input_dim,
-                             output_dim=output_dim,
-                             hidden_sizes=hidden_sizes,
-                             hidden_nonlinearity=hidden_nonlinearity,
-                             hidden_w_init=hidden_w_init,
-                             hidden_b_init=hidden_b_init,
-                             output_nonlinearity=output_nonlinearity,
-                             output_w_init=output_w_init,
-                             output_b_init=output_b_init,
-                             learn_std=learn_std,
-                             init_std=init_std,
-                             min_std=min_std,
-                             max_std=max_std,
-                             std_parameterization=std_parameterization,
-                             layer_normalization=layer_normalization)
+    def __init__(
+        self,
+        input_dim,
+        output_dim,
+        hidden_sizes=(32, 32),
+        hidden_nonlinearity=torch.tanh,
+        hidden_w_init=nn.init.xavier_uniform_,
+        hidden_b_init=nn.init.zeros_,
+        output_nonlinearity=None,
+        output_w_init=nn.init.xavier_uniform_,
+        output_b_init=nn.init.zeros_,
+        learn_std=True,
+        init_std=1.0,
+        min_std=1e-6,
+        max_std=None,
+        std_parameterization="exp",
+        layer_normalization=False,
+    ):
+        super(GaussianMLPModule, self).__init__(
+            input_dim=input_dim,
+            output_dim=output_dim,
+            hidden_sizes=hidden_sizes,
+            hidden_nonlinearity=hidden_nonlinearity,
+            hidden_w_init=hidden_w_init,
+            hidden_b_init=hidden_b_init,
+            output_nonlinearity=output_nonlinearity,
+            output_w_init=output_w_init,
+            output_b_init=output_b_init,
+            learn_std=learn_std,
+            init_std=init_std,
+            min_std=min_std,
+            max_std=max_std,
+            std_parameterization=std_parameterization,
+            layer_normalization=layer_normalization,
+        )
 
         self._mean_module = MLPModule(
             input_dim=self._input_dim,
@@ -257,7 +264,8 @@ class GaussianMLPModule(GaussianMLPBaseModule):
             output_nonlinearity=self._output_nonlinearity,
             output_w_init=self._output_w_init,
             output_b_init=self._output_b_init,
-            layer_normalization=self._layer_normalization)
+            layer_normalization=self._layer_normalization,
+        )
 
     def _get_mean_and_log_std(self, *inputs):
         """Get mean and std of Gaussian distribution given inputs.
@@ -275,7 +283,9 @@ class GaussianMLPModule(GaussianMLPBaseModule):
         mean = self._mean_module(*inputs)
 
         broadcast_shape = list(inputs[0].shape[:-1]) + [self._action_dim]
-        uncentered_log_std = torch.zeros(*broadcast_shape) + self._init_std
+        uncentered_log_std = (
+            torch.zeros(*broadcast_shape, device=get_device()) + self._init_std
+        )
 
         return mean, uncentered_log_std
 
@@ -337,50 +347,53 @@ class GaussianMLPIndependentStdModule(GaussianMLPBaseModule):
 
     """
 
-    def __init__(self,
-                 input_dim,
-                 output_dim,
-                 hidden_sizes=(32, 32),
-                 hidden_nonlinearity=torch.tanh,
-                 hidden_w_init=nn.init.xavier_uniform_,
-                 hidden_b_init=nn.init.zeros_,
-                 output_nonlinearity=None,
-                 output_w_init=nn.init.xavier_uniform_,
-                 output_b_init=nn.init.zeros_,
-                 learn_std=True,
-                 init_std=1.0,
-                 min_std=1e-6,
-                 max_std=None,
-                 std_hidden_sizes=(32, 32),
-                 std_hidden_nonlinearity=torch.tanh,
-                 std_hidden_w_init=nn.init.xavier_uniform_,
-                 std_hidden_b_init=nn.init.zeros_,
-                 std_output_nonlinearity=None,
-                 std_output_w_init=nn.init.xavier_uniform_,
-                 std_parameterization='exp',
-                 layer_normalization=False):
-        super(GaussianMLPIndependentStdModule,
-              self).__init__(input_dim=input_dim,
-                             output_dim=output_dim,
-                             hidden_sizes=hidden_sizes,
-                             hidden_nonlinearity=hidden_nonlinearity,
-                             hidden_w_init=hidden_w_init,
-                             hidden_b_init=hidden_b_init,
-                             output_nonlinearity=output_nonlinearity,
-                             output_w_init=output_w_init,
-                             output_b_init=output_b_init,
-                             learn_std=learn_std,
-                             init_std=init_std,
-                             min_std=min_std,
-                             max_std=max_std,
-                             std_hidden_sizes=std_hidden_sizes,
-                             std_hidden_nonlinearity=std_hidden_nonlinearity,
-                             std_hidden_w_init=std_hidden_w_init,
-                             std_hidden_b_init=std_hidden_b_init,
-                             std_output_nonlinearity=std_output_nonlinearity,
-                             std_output_w_init=std_output_w_init,
-                             std_parameterization=std_parameterization,
-                             layer_normalization=layer_normalization)
+    def __init__(
+        self,
+        input_dim,
+        output_dim,
+        hidden_sizes=(32, 32),
+        hidden_nonlinearity=torch.tanh,
+        hidden_w_init=nn.init.xavier_uniform_,
+        hidden_b_init=nn.init.zeros_,
+        output_nonlinearity=None,
+        output_w_init=nn.init.xavier_uniform_,
+        output_b_init=nn.init.zeros_,
+        learn_std=True,
+        init_std=1.0,
+        min_std=1e-6,
+        max_std=None,
+        std_hidden_sizes=(32, 32),
+        std_hidden_nonlinearity=torch.tanh,
+        std_hidden_w_init=nn.init.xavier_uniform_,
+        std_hidden_b_init=nn.init.zeros_,
+        std_output_nonlinearity=None,
+        std_output_w_init=nn.init.xavier_uniform_,
+        std_parameterization="exp",
+        layer_normalization=False,
+    ):
+        super(GaussianMLPIndependentStdModule, self).__init__(
+            input_dim=input_dim,
+            output_dim=output_dim,
+            hidden_sizes=hidden_sizes,
+            hidden_nonlinearity=hidden_nonlinearity,
+            hidden_w_init=hidden_w_init,
+            hidden_b_init=hidden_b_init,
+            output_nonlinearity=output_nonlinearity,
+            output_w_init=output_w_init,
+            output_b_init=output_b_init,
+            learn_std=learn_std,
+            init_std=init_std,
+            min_std=min_std,
+            max_std=max_std,
+            std_hidden_sizes=std_hidden_sizes,
+            std_hidden_nonlinearity=std_hidden_nonlinearity,
+            std_hidden_w_init=std_hidden_w_init,
+            std_hidden_b_init=std_hidden_b_init,
+            std_output_nonlinearity=std_output_nonlinearity,
+            std_output_w_init=std_output_w_init,
+            std_parameterization=std_parameterization,
+            layer_normalization=layer_normalization,
+        )
 
         self._mean_module = MLPModule(
             input_dim=self._input_dim,
@@ -392,7 +405,8 @@ class GaussianMLPIndependentStdModule(GaussianMLPBaseModule):
             output_nonlinearity=self._output_nonlinearity,
             output_w_init=self._output_w_init,
             output_b_init=self._output_b_init,
-            layer_normalization=self._layer_normalization)
+            layer_normalization=self._layer_normalization,
+        )
 
         self._log_std_module = MLPModule(
             input_dim=self._input_dim,
@@ -404,7 +418,8 @@ class GaussianMLPIndependentStdModule(GaussianMLPBaseModule):
             output_nonlinearity=self._std_output_nonlinearity,
             output_w_init=self._std_output_w_init,
             output_b_init=self._init_std_b,
-            layer_normalization=self._layer_normalization)
+            layer_normalization=self._layer_normalization,
+        )
 
     def _init_std_b(self, b):
         """Default bias initialization function.
@@ -476,38 +491,41 @@ class GaussianMLPTwoHeadedModule(GaussianMLPBaseModule):
 
     """
 
-    def __init__(self,
-                 input_dim,
-                 output_dim,
-                 hidden_sizes=(32, 32),
-                 hidden_nonlinearity=torch.tanh,
-                 hidden_w_init=nn.init.xavier_uniform_,
-                 hidden_b_init=nn.init.zeros_,
-                 output_nonlinearity=None,
-                 output_w_init=nn.init.xavier_uniform_,
-                 output_b_init=nn.init.zeros_,
-                 learn_std=True,
-                 init_std=1.0,
-                 min_std=1e-6,
-                 max_std=None,
-                 std_parameterization='exp',
-                 layer_normalization=False):
-        super(GaussianMLPTwoHeadedModule,
-              self).__init__(input_dim=input_dim,
-                             output_dim=output_dim,
-                             hidden_sizes=hidden_sizes,
-                             hidden_nonlinearity=hidden_nonlinearity,
-                             hidden_w_init=hidden_w_init,
-                             hidden_b_init=hidden_b_init,
-                             output_nonlinearity=output_nonlinearity,
-                             output_w_init=output_w_init,
-                             output_b_init=output_b_init,
-                             learn_std=learn_std,
-                             init_std=init_std,
-                             min_std=min_std,
-                             max_std=max_std,
-                             std_parameterization=std_parameterization,
-                             layer_normalization=layer_normalization)
+    def __init__(
+        self,
+        input_dim,
+        output_dim,
+        hidden_sizes=(32, 32),
+        hidden_nonlinearity=torch.tanh,
+        hidden_w_init=nn.init.xavier_uniform_,
+        hidden_b_init=nn.init.zeros_,
+        output_nonlinearity=None,
+        output_w_init=nn.init.xavier_uniform_,
+        output_b_init=nn.init.zeros_,
+        learn_std=True,
+        init_std=1.0,
+        min_std=1e-6,
+        max_std=None,
+        std_parameterization="exp",
+        layer_normalization=False,
+    ):
+        super(GaussianMLPTwoHeadedModule, self).__init__(
+            input_dim=input_dim,
+            output_dim=output_dim,
+            hidden_sizes=hidden_sizes,
+            hidden_nonlinearity=hidden_nonlinearity,
+            hidden_w_init=hidden_w_init,
+            hidden_b_init=hidden_b_init,
+            output_nonlinearity=output_nonlinearity,
+            output_w_init=output_w_init,
+            output_b_init=output_b_init,
+            learn_std=learn_std,
+            init_std=init_std,
+            min_std=min_std,
+            max_std=max_std,
+            std_parameterization=std_parameterization,
+            layer_normalization=layer_normalization,
+        )
 
         self._shared_mean_log_std_network = MultiHeadedMLPModule(
             n_heads=2,
@@ -521,9 +539,10 @@ class GaussianMLPTwoHeadedModule(GaussianMLPBaseModule):
             output_w_inits=self._output_w_init,
             output_b_inits=[
                 nn.init.zeros_,
-                lambda x: nn.init.constant_(x, self._init_std.item())
+                lambda x: nn.init.constant_(x, self._init_std.item()),
             ],
-            layer_normalization=self._layer_normalization)
+            layer_normalization=self._layer_normalization,
+        )
 
     def _get_mean_and_log_std(self, *inputs):
         """Get mean and std of Gaussian distribution given inputs.

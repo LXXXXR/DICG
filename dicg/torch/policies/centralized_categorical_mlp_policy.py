@@ -1,5 +1,6 @@
 """CentralizedCategoricalMLPPolicy."""
 
+import imp
 import akro
 import torch
 from torch import nn
@@ -7,6 +8,7 @@ import numpy as np
 
 from torch.distributions import Categorical
 from garage.torch.modules import MLPModule
+from dicg.utils import get_device
 
 
 class CentralizedCategoricalMLPPolicy(MLPModule):
@@ -66,7 +68,8 @@ class CentralizedCategoricalMLPPolicy(MLPModule):
             
         """
         # Not reshapeing obs to make agents independent
-        obs_n = torch.Tensor(obs_n)
+        if not torch.is_tensor(obs_n):
+            obs_n = torch.Tensor(obs_n).to(get_device())
         logits = super().forward(obs_n)
         # Make actions independent
         logits = logits.reshape(logits.shape[:-1] + (self._n_agents, -1))
@@ -78,7 +81,10 @@ class CentralizedCategoricalMLPPolicy(MLPModule):
         avail_actions_n = avail_actions_n.reshape(
             avail_actions_n.shape[:-1] + (self._n_agents, -1)
         )
-        masked_probs = dists_n.probs * torch.Tensor(avail_actions_n)  # mask
+        if not torch.is_tensor(avail_actions_n):
+            avail_actions_n = torch.Tensor(avail_actions_n)
+
+        masked_probs = dists_n.probs * avail_actions_n.to(device=get_device())  # mask
         masked_probs = masked_probs / masked_probs.sum(
             dim=-1, keepdim=True
         )  # renormalize
