@@ -5,6 +5,7 @@ import numpy as np
 
 from torch.distributions import Categorical
 from dicg.torch.modules import CategoricalMLPModule, DICGBase
+from dicg.utils import get_device
 
 
 class DICGCECategoricalMLPPolicy(DICGBase):
@@ -47,8 +48,9 @@ class DICGCECategoricalMLPPolicy(DICGBase):
         self.layers.append(self.categorical_output_layer)
 
     def forward(self, obs_n, avail_actions_n):
-
-        obs_n = torch.Tensor(obs_n)
+        if not torch.is_tensor(obs_n):
+            obs_n = torch.Tensor(obs_n)
+        obs_n = obs_n.to(get_device())
         obs_n = obs_n.reshape(obs_n.shape[:-1] + (self._n_agents, -1))
         avail_actions_n = avail_actions_n.reshape(
             avail_actions_n.shape[:-1] + (self._n_agents, -1)
@@ -65,7 +67,9 @@ class DICGCECategoricalMLPPolicy(DICGBase):
             dists_n = self.categorical_output_layer.forward(embeddings_add)
 
         # Apply available actions mask
-        masked_probs = dists_n.probs * torch.Tensor(avail_actions_n)  # mask
+        if not torch.is_tensor(avail_actions_n):
+            avail_actions_n = torch.Tensor(avail_actions_n)
+        masked_probs = dists_n.probs * avail_actions_n.to(get_device())  # mask
         masked_probs = masked_probs / masked_probs.sum(
             dim=-1, keepdim=True
         )  # renormalize

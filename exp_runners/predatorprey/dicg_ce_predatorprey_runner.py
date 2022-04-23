@@ -144,7 +144,7 @@ def run(args):
                 clip_grad_norm=args.clip_grad_norm,
                 optimization_n_minibatches=args.opt_n_minibatches,
                 optimization_mini_epochs=args.opt_mini_epochs,
-            ).to(get_device())
+            )
 
             runner.setup(
                 algo,
