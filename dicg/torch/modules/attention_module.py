@@ -1,3 +1,4 @@
+from multiprocessing.sharedctypes import Value
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -89,12 +90,24 @@ class AttentionModule(nn.Module):
             attention_weights = attention_weights / n_agents
 
         elif self.attention_type == "hard_soft":
+            n_agents = query.shape[-2]
+            expected_shape = query.shape[:-2] + (n_agents, n_agents)
+
+            if len(query.shape) == 4:
+                pass
+            elif len(query.shape) == 3:
+                query = query[None, :, :]
+            elif len(query.shape) == 2:
+                query = query[None, None, :, :]
+            else:
+                raise ValueError("Wrong shape")
+
             n_paths, max_path_length, n_agents, emb_feat_dim = query.shape
 
             # soft
             context = query.transpose(-2, -1).contiguous()
-            query = self.linear_in(query)
-            attention_scores = torch.matmul(query, context)
+            q = self.soft_encoding(query)
+            attention_scores = torch.matmul(q, context)
             soft_weights = self.softmax(attention_scores)
 
             # hard
@@ -102,7 +115,7 @@ class AttentionModule(nn.Module):
                 (n_agents - 1, n_paths * max_path_length, n_agents, 2 * emb_feat_dim),
                 device=get_device(),
             )
-            h = query.reshape(-2, n_agents, emb_feat_dim)
+            h = query.reshape(-1, n_agents, emb_feat_dim)
             for i in range(n_agents):
                 h_i = h[:, i, :].reshape(1, -1, emb_feat_dim)
                 h_i = h_i.repeat(n_agents - 1, 1, 1)
@@ -131,6 +144,7 @@ class AttentionModule(nn.Module):
                 ] = hard_weights_temp[:, :, i, :]
 
             attention_weights = hard_weights * soft_weights
+            attention_weights = attention_weights.reshape(expected_shape)
 
         return attention_weights
 

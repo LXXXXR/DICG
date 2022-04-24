@@ -8,7 +8,7 @@
             "name": "Python: Current File",
             "type": "python",
             "request": "launch",
-            "program": "exp_runners/predatorprey/dicg_de_predatorprey_runner.py",
+            "program": "exp_runners/predatorprey/exp_ce_predatorprey_runner.py",
             "console": "integratedTerminal",
             "justMyCode": true,
             "args": [
