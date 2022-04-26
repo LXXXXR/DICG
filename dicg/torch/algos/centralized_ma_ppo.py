@@ -180,9 +180,19 @@ class CentralizedMAPPO(MABatchPolopt):
 
         with torch.no_grad():
             loss_before = self._compute_loss(
-                itr, obs, avail_actions, actions, rewards, valids, baselines
+                itr,
+                obs.to(get_device()),
+                avail_actions.to(get_device()),
+                actions.to(get_device()),
+                rewards.to(get_device()),
+                valids.to(get_device()),
+                baselines.to(get_device()),
             )
-            kl_before = self._compute_kl_constraint(obs, avail_actions, actions)
+            kl_before = self._compute_kl_constraint(
+                obs.to(get_device()),
+                avail_actions.to(get_device()),
+                actions.to(get_device()),
+            )
 
         self._old_policy.load_state_dict(self.policy.state_dict())
 
@@ -215,7 +225,9 @@ class CentralizedMAPPO(MABatchPolopt):
                     baselines[ids],
                 )
                 if not isinstance(self.baseline, LinearFeatureBaseline):
-                    baseline_loss = self.baseline.compute_loss(obs[ids], returns[ids])
+                    baseline_loss = self.baseline.compute_loss(
+                        obs[ids].to(get_device()), returns[ids].to(get_device())
+                    )
                     self._baseline_optimizer.zero_grad()
                     baseline_loss.backward()
                 self._optimizer.zero_grad()
@@ -229,13 +241,13 @@ class CentralizedMAPPO(MABatchPolopt):
 
                 self._optimize(
                     itr,
-                    obs[ids],
-                    avail_actions[ids],
-                    actions[ids],
-                    rewards[ids],
-                    valids[ids],
-                    baselines[ids],
-                    returns[ids],
+                    obs[ids].to(get_device()),
+                    avail_actions[ids].to(get_device()),
+                    actions[ids].to(get_device()),
+                    rewards[ids].to(get_device()),
+                    valids[ids].to(get_device()),
+                    baselines[ids].to(get_device()),
+                    returns[ids].to(get_device()),
                 )
             logger.log("Mini epoch: {} | Loss: {}".format(mini_epoch, loss))
             if not isinstance(self.baseline, LinearFeatureBaseline):
@@ -306,6 +318,8 @@ class CentralizedMAPPO(MABatchPolopt):
             }
         )
 
+        torch.cuda.empty_cache()
+
         return np.mean(average_returns)
 
     def _compute_loss(
@@ -326,6 +340,13 @@ class CentralizedMAPPO(MABatchPolopt):
 
         """
         del itr
+
+        obs = obs.to(get_device())
+        avail_actions = avail_actions.to(get_device())
+        actions = actions.to(get_device())
+        rewards = rewards.to(get_device())
+        valids = valids.to(get_device())
+        baselines = baselines.to(get_device())
 
         if self.policy.recurrent:
             policy_entropies = self._compute_policy_entropy(obs, avail_actions, actions)
@@ -529,12 +550,8 @@ class CentralizedMAPPO(MABatchPolopt):
                 )
                 for path in paths
             ]
-        ).to(get_device())
-        valids = (
-            torch.Tensor([len(path["actions"]) for path in paths])
-            .int()
-            .to(get_device())
         )
+        valids = torch.Tensor([len(path["actions"]) for path in paths]).int()
         obs = torch.stack(
             [
                 pad_to_last(
@@ -542,7 +559,7 @@ class CentralizedMAPPO(MABatchPolopt):
                 )
                 for path in paths
             ]
-        ).to(get_device())
+        )
         avail_actions = torch.stack(
             [
                 pad_one_to_last(
@@ -550,21 +567,19 @@ class CentralizedMAPPO(MABatchPolopt):
                 )
                 for path in paths
             ]
-        ).to(
-            get_device()
         )  # Cannot pad all zero since prob sum cannot be zero
         actions = torch.stack(
             [
                 pad_to_last(path["actions"], total_length=self.max_path_length, axis=0)
                 for path in paths
             ]
-        ).to(get_device())
+        )
         rewards = torch.stack(
             [
                 pad_to_last(path["rewards"], total_length=self.max_path_length)
                 for path in paths
             ]
-        ).to(get_device())
+        )
 
         if isinstance(self.baseline, LinearFeatureBaseline):
             baselines = torch.stack(
@@ -574,9 +589,9 @@ class CentralizedMAPPO(MABatchPolopt):
                     )
                     for path in paths
                 ]
-            ).to(get_device())
+            )
         else:
             with torch.no_grad():
-                baselines = self.baseline.forward(obs)
+                baselines = self.baseline.forward(obs.to(get_device()))
 
         return obs, avail_actions, actions, rewards, valids, baselines, returns
